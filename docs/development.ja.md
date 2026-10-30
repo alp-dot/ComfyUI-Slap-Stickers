@@ -8,6 +8,7 @@ Slap Stickersの開発に参加する方のためのガイドです。ノード�
 
 ```text
 ComfyUI-Slap-Stickers/
+├── .github/workflows/   # Registryへの手動公開
 ├── __init__.py          # ComfyUIのエントリーポイント
 ├── slap_stickers/       # Pythonノード、幾何処理、描画、エディタ用ファイル
 ├── web_src/             # フロントエンドのソース
@@ -133,3 +134,13 @@ SS_TEST_DEVICE=cuda "$COMFY_PYTHON" -m pytest -q tests/python/test_render.py
 - PythonとJavaScriptで共有する幾何・状態の規則は、`tests/fixtures/`を使って検証しています。変更時は両実装を確認してください。
 - `web_src/`を変更した場合は、再ビルドした`web/`も含めます。`npm run check:web`で更新漏れを検出できます。
 - 変更内容と検証方法を記載します。レイアウトやワークフローの変更はComfyUI上で、GPU依存の描画はGPUでも確認してください。
+
+## バージョンを公開する（メンテナー向け）
+
+RegistryのパッケージIDは`comfyui-slap-stickers`、Publisherは`alp-dot`です。公開用APIキーはGitHub ActionsのRepository secret `REGISTRY_ACCESS_TOKEN`に登録し、値をソースファイルや議論へ記載しないでください。
+
+1. `pyproject.toml`の`version`を未使用の番号へ更新し、レビュー済みの変更を`main`へpushします。
+2. GitHub Actionsで**Publish to Comfy Registry**を選び、`main`を指定して**Run workflow**を実行します。
+3. ワークフローの結果とRegistry側のバージョン状態を確認します。アップロードの成功だけでは、審査と検索への反映が完了したとは判断できません。
+
+ワークフローはフロントエンドのバンドルを照合し、`comfy node validate`を実行してから公開します。`.comfyignore`で開発用ファイルとテストを除外し、ビルド済みエディタ、ノード、ワークフロー、利用者向けreferenceを配布します。ローカルで配布物を確認するには`comfy-cli==1.17.0`をインストールし、`comfy node pack`を実行します。Git管理中のファイルから、管理対象外の`node.zip`が生成されます。

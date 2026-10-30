@@ -8,6 +8,7 @@ Start here to contribute to Slap Stickers. For the node's behavior and model set
 
 ```text
 ComfyUI-Slap-Stickers/
+├── .github/workflows/   # Manual Registry publishing
 ├── __init__.py          # ComfyUI entry point
 ├── slap_stickers/       # Python node, geometry, rendering and editor files
 ├── web_src/             # Frontend source
@@ -133,3 +134,13 @@ SS_TEST_DEVICE=cuda "$COMFY_PYTHON" -m pytest -q tests/python/test_render.py
 - Geometry and state rules shared by Python and JavaScript are checked against `tests/fixtures/`. Review both implementations when changing these rules.
 - Include the rebuilt `web/` files whenever `web_src/` changes. `npm run check:web` detects stale bundles.
 - Describe what changed and how you tested it. Include host checks for layout or workflow changes, and GPU checks for GPU-dependent rendering.
+
+## Publish a version (maintainers)
+
+The Registry package ID is `comfyui-slap-stickers`, under publisher `alp-dot`. Set the publishing API key as the GitHub Actions repository secret `REGISTRY_ACCESS_TOKEN`; keep its value out of source files and discussions.
+
+1. Update `version` in `pyproject.toml` to an unused version and push the reviewed changes to `main`.
+2. Open GitHub Actions, select **Publish to Comfy Registry**, then **Run workflow** on `main`.
+3. Check the workflow result and the version's status on the Registry. A successful upload does not itself confirm that review and indexing have finished.
+
+The workflow checks the frontend bundle and runs `comfy node validate` before publishing. `.comfyignore` excludes development files and tests while keeping the built editor, node code, workflow and user reference docs. For local packaging, install `comfy-cli==1.17.0` and run `comfy node pack`; it creates the ignored `node.zip` file from Git-tracked files.

@@ -1,0 +1,13 @@
+# Keep the Registry archive focused on the node, editor, workflows and user docs.
+/AGENTS.md
+/.github/
+/.gitignore
+/.comfyignore
+/dev/
+/docs/development*.md
+/tests/
+/tools/
+/web_src/
+/package*.json
+/playwright.config.js
+/vite*.config.js

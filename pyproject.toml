@@ -5,6 +5,16 @@ description = "Place image stickers on the surfaces in a photograph using MoGe g
 license = "MIT"
 requires-python = ">=3.10"
 
+[project.urls]
+Repository = "https://github.com/alp-dot/ComfyUI-Slap-Stickers"
+Documentation = "https://github.com/alp-dot/ComfyUI-Slap-Stickers/blob/main/docs/reference.md"
+Issues = "https://github.com/alp-dot/ComfyUI-Slap-Stickers/issues"
+
+[tool.comfy]
+PublisherId = "alp-dot"
+DisplayName = "Slap Stickers"
+requires-comfyui = ">=0.41.0"
+
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
 pythonpath = ["."]
