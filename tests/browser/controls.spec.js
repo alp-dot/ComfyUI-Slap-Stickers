@@ -18,7 +18,7 @@ test('the editor can add and duplicate images without secure-context randomUUID'
   for(const id of ids)expect(id).toMatch(/^st_[a-f0-9]{12}$/);
 });
 
-for(const action of ['Duplicate','Send to back','Bring to front'])test(`Escape deselects after ${action} without changing the saved stickers`,async({page})=>{
+for(const action of ['Duplicate','Send to back','Bring to front'])test(`Escape from a focused toolbar control deselects after ${action} without changing the saved stickers`,async({page})=>{
   await page.goto('/tests/browser/pages/fixture/');
   await expect(page.getByTestId('surface-status')).toHaveAttribute('data-sticker-count','0');
   await page.locator('input[type=file]').setInputFiles('tests/browser/fixtures/sticker.png');
@@ -27,7 +27,10 @@ for(const action of ['Duplicate','Send to back','Bring to front'])test(`Escape d
   if(action==='Bring to front')await page.getByRole('button',{name:'Send to back',exact:true}).click();
   const button=page.getByRole('button',{name:action,exact:true});
   if(action!=='Duplicate')await button.click();
-  await expect(button).toBeFocused();
+  // Reordering disables its own button; disabled controls cannot retain focus reliably.
+  // Keep the keyboard event on an enabled toolbar control, outside the canvas.
+  await duplicate.focus();
+  await expect(duplicate).toBeFocused();
   const before=await page.evaluate(()=>window.demo.commits.slice());
   await page.keyboard.press('Escape');
   await expect(duplicate).toBeDisabled();

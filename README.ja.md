@@ -2,11 +2,15 @@
 
 [English](README.md) | **日本語**
 
+[![Slap Stickersのデモ動画を見る](https://img.youtube.com/vi/SL36R3wVEes/hqdefault.jpg)](https://youtu.be/SL36R3wVEes)
+
 **好きなステッカーを画像の中にペタッと貼り付ける。**
 
 Slap Stickersは、写真の中の物へロゴ・ラベル・イラストを貼るComfyUIカスタムノードです。
 MoGeで写真に写った物の形を読み取るので、ボトルや果物のような丸い物にも形に沿って貼れます。
 出力は元の解像度のままで、そのまま使うことも、画像編集モデルで仕上げる下絵にすることもできます。
+
+[Lovart](https://www.lovart.ai/)からインスピレーションを受けて開発しました。
 
 ## 特徴
 
