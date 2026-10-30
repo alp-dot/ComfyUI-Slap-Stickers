@@ -2,11 +2,15 @@
 
 **English** | [日本語](README.ja.md)
 
+[![Watch Slap Stickers in action](https://img.youtube.com/vi/SL36R3wVEes/hqdefault.jpg)](https://youtu.be/SL36R3wVEes)
+
 **Slap your favorite stickers onto anything in a photo.**
 
 Slap Stickers is a ComfyUI custom node that puts logos, labels and illustrations onto the objects in a photograph.
 It reads the shape of each object with MoGe, so stickers follow round things like bottles and fruit.
 The result keeps the photo's original resolution, ready to use as it is or to refine with an image-editing model.
+
+Inspired by [Lovart](https://www.lovart.ai/).
 
 ## Features
 

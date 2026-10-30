@@ -8,7 +8,7 @@ Start here to contribute to Slap Stickers. For the node's behavior and model set
 
 ```text
 ComfyUI-Slap-Stickers/
-├── .github/workflows/   # Manual Registry publishing
+├── .github/workflows/   # CI and manual Registry publishing
 ├── __init__.py          # ComfyUI entry point
 ├── slap_stickers/       # Python node, geometry, rendering and editor files
 ├── web_src/             # Frontend source
@@ -128,6 +128,8 @@ SS_TEST_DEVICE=cuda "$COMFY_PYTHON" -m pytest -q tests/python/test_render.py
 ```
 
 ## Prepare a contribution
+
+Work on a separate branch and open a pull request against `main`. Merging requires the **Python tests** and **Frontend checks** jobs to pass on an up-to-date branch and all review conversations to be resolved. CI runs CPU Python tests, JavaScript tests, bundle verification and fixture-based Chromium tests. GPU, real ComfyUI integration and performance checks remain local checks as described above.
 
 - Read [AGENTS.md](../AGENTS.md) for repository constraints. Preserve saved node identifiers, ports and the `state_json` format.
 - Keep behavior documented in both reference files. For a bug fix, add a regression test that fails before the fix and passes after it.

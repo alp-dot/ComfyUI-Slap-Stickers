@@ -8,7 +8,7 @@ Slap Stickersの開発に参加する方のためのガイドです。ノード�
 
 ```text
 ComfyUI-Slap-Stickers/
-├── .github/workflows/   # Registryへの手動公開
+├── .github/workflows/   # CIとRegistryへの手動公開
 ├── __init__.py          # ComfyUIのエントリーポイント
 ├── slap_stickers/       # Pythonノード、幾何処理、描画、エディタ用ファイル
 ├── web_src/             # フロントエンドのソース
@@ -128,6 +128,8 @@ SS_TEST_DEVICE=cuda "$COMFY_PYTHON" -m pytest -q tests/python/test_render.py
 ```
 
 ## 変更を提出する前に
+
+`main`から作業ブランチを作成し、プルリクエストを開いてください。マージには、最新の`main`を取り込んだ状態で **Python tests** と **Frontend checks** が成功し、レビューの会話がすべて解決済みである必要があります。CIではCPUのPythonテスト、JavaScriptテスト、バンドルの検証、fixtureを使うChromiumテストを実行します。GPU・実際のComfyUIとの結合・性能の検証は、上記の手順でローカル実行してください。
 
 - リポジトリの制約を[AGENTS.md](../AGENTS.md)で確認します。保存済みのノードID、ポート、`state_json`形式との互換性を維持してください。
 - 動作の説明は、英語・日本語のreference両方へ反映します。バグ修正では、修正前に失敗し、修正後に成功する回帰テストを追加します。
