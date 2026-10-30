@@ -1,0 +1,369 @@
+{
+  "last_node_id": 6,
+  "last_link_id": 4,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "image"
+          }
+        },
+        {
+          "name": "upload",
+          "type": "IMAGEUPLOAD",
+          "link": null,
+          "widget": {
+            "name": "upload"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "widgets_values": [
+        "",
+        "image"
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "pos": [
+        0,
+        163
+      ],
+      "size": [
+        300,
+        422
+      ],
+      "order": 0,
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "type": "LoadMoGeModel",
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model_name",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "model_name"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MOGE_MODEL",
+          "type": "MOGE_MODEL",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "widgets_values": [
+        "moge_3_vitg_fp16.safetensors"
+      ],
+      "properties": {
+        "Node name for S&R": "LoadMoGeModel"
+      },
+      "pos": [
+        0,
+        30
+      ],
+      "size": [
+        300,
+        58
+      ],
+      "color": "#323",
+      "bgcolor": "#535",
+      "order": 1,
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "type": "MoGeInference",
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "moge_model",
+          "type": "MOGE_MODEL",
+          "link": 1
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "resolution_level",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "resolution_level"
+          }
+        },
+        {
+          "name": "fov_x_degrees",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "fov_x_degrees"
+          }
+        },
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "batch_size"
+          }
+        },
+        {
+          "name": "force_projection",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "force_projection"
+          }
+        },
+        {
+          "name": "apply_mask",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "apply_mask"
+          }
+        },
+        {
+          "name": "refine_steps",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "refine_steps"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "moge_geometry",
+          "type": "MOGE_GEOMETRY",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "widgets_values": [
+        9,
+        0.0,
+        1,
+        true,
+        true,
+        3
+      ],
+      "properties": {
+        "Node name for S&R": "MoGeInference"
+      },
+      "pos": [
+        360,
+        30
+      ],
+      "size": [
+        270,
+        198
+      ],
+      "order": 2,
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "type": "SurfaceStickers",
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "geometry",
+          "type": "MOGE_GEOMETRY",
+          "link": 3
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "state_json",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "state_json"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            4
+          ]
+        },
+        {
+          "name": "stickers",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "widgets_values": [
+        ""
+      ],
+      "properties": {
+        "Node name for S&R": "SurfaceStickers"
+      },
+      "pos": [
+        690,
+        30
+      ],
+      "size": [
+        640,
+        600
+      ],
+      "color": "#232",
+      "bgcolor": "#353",
+      "order": 3,
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "type": "PreviewImage",
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": []
+        }
+      ],
+      "widgets_values": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "pos": [
+        1390,
+        30
+      ],
+      "size": [
+        340,
+        346
+      ],
+      "order": 4,
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "type": "MarkdownNote",
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "## Model\n\nDownload [MoGe 3 ViT-g FP16](https://huggingface.co/Comfy-Org/MoGe/blob/main/geometry_estimation/moge_3_vitg_fp16.safetensors) and put the file here:\n\n```text\nComfyUI/\n└── models/\n    └── geometry_estimation/\n        └── moge_3_vitg_fp16.safetensors\n```\n\nRestart ComfyUI, then select the file in **Load MoGe Model**.\n\n## Quick start\n\n1. Choose your background photo in **Load Image**.\n2. **Run once** to load the photo and its surface into **Slap Stickers**.\n3. Drop a sticker image onto the photo, or click **+**.\n4. Drag to move, use the corners to resize, and the round handle to rotate. The bottom toolbar controls opacity, duplication, layer order and deletion.\n5. **Run again** to send the edited image to **Preview Image**.\n\n> First run: load the surface. Edit in the node. Run again: update the output.\n\n## Sharing a workflow\n\nSticker files are saved in `ComfyUI/input/slap_stickers/`. Share those files together with the workflow.\n\n[Official MoGe setup guide](https://github.com/Comfy-Org/docs/blob/main/tutorials/utility/moge.mdx)\n"
+      ],
+      "pos": [
+        -500,
+        30
+      ],
+      "size": [
+        440,
+        420
+      ],
+      "color": "#323",
+      "bgcolor": "#535",
+      "order": 5,
+      "flags": {},
+      "widgets_values_named": {
+        "text": "## Model\n\nDownload [MoGe 3 ViT-g FP16](https://huggingface.co/Comfy-Org/MoGe/blob/main/geometry_estimation/moge_3_vitg_fp16.safetensors) and put the file here:\n\n```text\nComfyUI/\n└── models/\n    └── geometry_estimation/\n        └── moge_3_vitg_fp16.safetensors\n```\n\nRestart ComfyUI, then select the file in **Load MoGe Model**.\n\n## Quick start\n\n1. Choose your background photo in **Load Image**.\n2. **Run once** to load the photo and its surface into **Slap Stickers**.\n3. Drop a sticker image onto the photo, or click **+**.\n4. Drag to move, use the corners to resize, and the round handle to rotate. The bottom toolbar controls opacity, duplication, layer order and deletion.\n5. **Run again** to send the edited image to **Preview Image**.\n\n> First run: load the surface. Edit in the node. Run again: update the output.\n\n## Sharing a workflow\n\nSticker files are saved in `ComfyUI/input/slap_stickers/`. Share those files together with the workflow.\n\n[Official MoGe setup guide](https://github.com/Comfy-Org/docs/blob/main/tutorials/utility/moge.mdx)\n"
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      2,
+      0,
+      3,
+      0,
+      "MOGE_MODEL"
+    ],
+    [
+      2,
+      1,
+      0,
+      3,
+      1,
+      "IMAGE"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "MOGE_GEOMETRY"
+    ],
+    [
+      4,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}

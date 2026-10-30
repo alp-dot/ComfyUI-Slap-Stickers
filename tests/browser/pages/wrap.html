@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"><style>body{margin:20px;background:#171819;color:white;font:14px system-ui}.row{display:flex;gap:24px}canvas{width:600px;height:363px}</style></head><body><div class="row"><div><p>Wrap — curved surface</p><canvas id="wrap"></canvas></div><div><p>Flat — tangent plane</p><canvas id="flat"></canvas></div></div><script type="module">
+import {wrapSurface} from '/web_src/wrap.js';
+import {flatSurface} from '/web_src/surface.js';
+import {renderStage} from '/web_src/stage/renderer.js';
+const c=(await(await fetch('/tests/fixtures/geometry/wrap.json')).json()).find(c=>c.name==='camera-cylinder');
+const grid={...c,points:Float32Array.from(c.points),normals:Float32Array.from(c.normals),valid:Uint8Array.from(c.valid)};
+const make=async color=>{const c=new OffscreenCanvas(256,256),ctx=c.getContext('2d');ctx.fillStyle=color;ctx.fillRect(0,0,256,256);return createImageBitmap(c);};
+const bg=new OffscreenCanvas(c.width,c.height),bgctx=bg.getContext('2d'),pixels=bgctx.createImageData(c.width,c.height);
+for(let i=0;i<c.width*c.height;i++){const shade=Math.round(70-150*grid.normals[i*3+2]);pixels.data.set([shade,shade,shade,255],i*4);}
+bgctx.putImageData(pixels,0,0);
+const background=await createImageBitmap(bg),checker=new OffscreenCanvas(448,128),paint=checker.getContext('2d');
+for(let y=0;y<4;y++)for(let x=0;x<14;x++){paint.fillStyle=(x+y)%2?'#ff3311':'#f8eccc';paint.fillRect(x*32,y*32,32,32);}
+const source=await createImageBitmap(checker),st={...c.sticker,id:'one',mode:'wrap',visible:true,opacity:1,shading:0};
+const surface=wrapSurface(grid,st,c.aspect),flat=flatSurface(grid,st,c.aspect);
+const entry={grid,image:background,light:new Float32Array(256*256).fill(.5),meta:{image_w:c.width,image_h:c.height}};
+for(const [id,frame]of [['wrap',surface],['flat',flat]]){const canvas=document.getElementById(id);canvas.width=c.width*10;canvas.height=c.height*10;renderStage(canvas,entry,[st],new Map([['one',frame]]),new Map([['one',source]]),null);}
+const row=Math.floor(c.height/2),col=70,pixel=id=>[...document.getElementById(id).getContext('2d').getImageData((col+.5)*10,(row+.5)*10,1,1).data];
+const ref=new OffscreenCanvas(c.width*10,c.height*10);ref.getContext('2d').drawImage(background,0,0,ref.width,ref.height);
+const backgroundPixel=[...ref.getContext('2d').getImageData((col+.5)*10,(row+.5)*10,1,1).data];
+window.__wrap={backgroundPixel,wrapPixel:pixel('wrap'),flatPixel:pixel('flat'),arc:surface.xy[(row*c.width+col)*2],chord:grid.points[(row*c.width+col)*3],error:null};
+</script></body></html>

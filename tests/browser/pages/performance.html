@@ -1,0 +1,28 @@
+<!doctype html><html><head><style>body{background:#111;color:white;margin:0}#app{width:900px;height:700px}</style></head><body><div id="app"></div><script type="module">
+import {createApp,h} from 'vue';
+import SsSurface from '/web_src/components/SsSurface.vue';
+import {createSession} from '/web_src/session.js';
+import '/web_src/slap_stickers.css';
+const calls=[],original=Worker.prototype.postMessage;
+Worker.prototype.postMessage=function(data,...args){if(data.type==='flat')calls.push({id:data.sticker.id,coarse:data.coarse});return original.call(this,data,...args);};
+const w=1024,hg=768,n=w*hg,wire=new ArrayBuffer(n*25),p=new Float32Array(wire,0,n*3),normals=new Float32Array(wire,n*12,n*3),valid=new Uint8Array(wire,n*24,n);
+const cylindrical=location.search.includes('cylinder'),K=cylindrical?[[1.6,0,.5],[0,1.6*w/hg,.5],[0,0,1]]:[[1,0,.5],[0,w/hg,.5],[0,0,1]];
+valid.fill(1);for(let y=0;y<hg;y++)for(let x=0;x<w;x++){
+  const i=y*w+x,rx=((x+.5)/w-.5)/K[0][0],ry=((y+.5)/hg-.5)/K[1][1],a=1+rx*rx;
+  const z=cylindrical?(3-Math.sqrt(9-8*a))/a:2;
+  p[i*3]=rx*z;p[i*3+1]=ry*z;p[i*3+2]=z;normals[i*3]=cylindrical?rx*z:0;normals[i*3+2]=cylindrical?z-3:-1;
+}
+const lighting=location.search.includes('lighting');
+const c=new OffscreenCanvas(1024,768),ctx=c.getContext('2d');
+if(lighting){const ramp=ctx.createLinearGradient(0,0,c.width,0);ramp.addColorStop(0,'#404040');ramp.addColorStop(1,'#c0c0c0');ctx.fillStyle=ramp;}
+else ctx.fillStyle='#808080';
+ctx.fillRect(0,0,c.width,c.height);
+const background=await c.convertToBlob({type:'image/png'}),files=new Map([['grid',URL.createObjectURL(new Blob([wire]))],['preview',URL.createObjectURL(background)]]);
+const session=createSession({upload:async file=>{files.set(file.name,URL.createObjectURL(file));return {name:file.name,type:'input'};},urlFor:file=>files.get(file.filename)});
+createApp({render:()=>h(SsSurface,{session})}).mount('#app');
+await session.load({grid:{filename:'grid'},preview:{filename:'preview'},meta:{key:'performance',format:1,grid_w:w,grid_h:hg,image_w:w,image_h:hg,intrinsics:K}});
+const s=new OffscreenCanvas(64,48),brush=s.getContext('2d');brush.fillStyle=lighting?'#808080':'#ff2211';brush.fillRect(0,0,64,48);
+await session.addFile(new File([await s.convertToBlob({type:'image/png'})],'red.png',{type:'image/png'}),[.5,.5]);
+session.setSticker(session.model.selected,{size:.5});await session.update();
+window.perf={session,calls};
+</script></body></html>

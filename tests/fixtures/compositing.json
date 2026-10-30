@@ -1,0 +1,8 @@
+[
+  {"name":"transparent-black","background":{"kind":"solid","rgb":[128,128,128]},"source":{"pixels":[[[255,0,0,255],[0,0,0,0]],[[255,0,0,255],[0,0,0,0]]]},"shading":0,"probes":[{"xy":[32,32],"rgb":[255,0,0],"alpha":0.46875}]},
+  {"name":"transparent-blue","background":{"kind":"solid","rgb":[128,128,128]},"source":{"pixels":[[[255,0,0,255],[0,0,255,0]],[[255,0,0,255],[0,0,255,0]]]},"shading":0,"probes":[{"xy":[32,32],"rgb":[255,0,0],"alpha":0.46875}]},
+  {"name":"neutral","background":{"kind":"solid","rgb":[128,128,128]},"source":{"rgb":[128,128,128]},"shading":0.8,"probes":[{"xy":[32,32],"rgb":[128,128,128],"alpha":1}]},
+  {"name":"warm","background":{"kind":"solid","rgb":[180,150,120]},"source":{"rgb":[128,128,128]},"shading":0.8,"probes":[{"xy":[32,32],"rgb":[132,127,124],"alpha":1}]},
+  {"name":"texture","background":{"kind":"stripes","dark":96,"light":160},"source":{"rgb":[128,128,128]},"shading":0.8,"probes":[{"xy":[32,32],"rgb":[122,122,122],"alpha":1},{"xy":[33,32],"rgb":[134,134,134],"alpha":1}]},
+  {"name":"texture-disabled","background":{"kind":"stripes","dark":96,"light":160},"source":{"rgb":[128,128,128]},"shading":0,"probes":[{"xy":[32,32],"rgb":[128,128,128],"alpha":1},{"xy":[33,32],"rgb":[128,128,128],"alpha":1}]}
+]

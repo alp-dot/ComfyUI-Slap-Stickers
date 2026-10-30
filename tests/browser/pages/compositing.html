@@ -1,0 +1,26 @@
+<!doctype html><html><head><meta charset="utf-8"><style>body{background:#171819;color:#ddd;font:14px system-ui;margin:32px}section{display:inline-block;margin:0 24px 24px 0}canvas{width:256px;height:256px;image-rendering:pixelated}h1{font-size:20px}</style></head><body><h1>Surface texture / ambient tint / transparent edges</h1><script type="module">
+import {createSession} from '/web_src/session.js';
+import {renderStage} from '/web_src/stage/renderer.js';
+const cases=await(await fetch('/tests/fixtures/compositing.json')).json(),results={};
+for(const c of cases){
+  const w=64,h=64,n=w*h,wire=new ArrayBuffer(n*25),points=new Float32Array(wire,0,n*3),normals=new Float32Array(wire,n*12,n*3),valid=new Uint8Array(wire,n*24,n);valid.fill(1);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;points.set([((x+.5)/w-.5)*2,((y+.5)/h-.5)*2,2],i*3);normals[i*3+2]=-1;}
+  const background=new OffscreenCanvas(w,h),ctx=background.getContext('2d'),pixels=ctx.createImageData(w,h);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const v=x%2?c.background.light:c.background.dark,rgb=c.background.kind==='solid'?c.background.rgb:[v,v,v];pixels.data.set([...rgb,255],(y*w+x)*4);}
+  ctx.putImageData(pixels,0,0);
+  const source=new OffscreenCanvas(c.source.pixels?.[0].length??8,c.source.pixels?.length??8),paint=source.getContext('2d'),rgba=paint.createImageData(source.width,source.height);
+  for(let y=0;y<source.height;y++)for(let x=0;x<source.width;x++)rgba.data.set(c.source.pixels?.[y][x]??[...c.source.rgb,255],(y*source.width+x)*4);
+  paint.putImageData(rgba,0,0);
+  const files=new Map([['grid',URL.createObjectURL(new Blob([wire]))],['background',URL.createObjectURL(await background.convertToBlob())]]);
+  const s=createSession({upload:async file=>{files.set(file.name,URL.createObjectURL(file));return {name:file.name,type:'input'};},urlFor:file=>files.get(file.filename)});
+  s.setViewport(w,h);await s.load({grid:{filename:'grid'},preview:{filename:'background'},meta:{key:'compositing-'+c.name,format:1,grid_w:w,grid_h:h,image_w:w,image_h:h,intrinsics:[[1,0,.5],[0,1,.5],[0,0,1]]}});
+  await s.addFile(new File([await source.convertToBlob()],'sample.png',{type:'image/png'}));
+  s.setSticker(s.model.selected,{size:.5,shading:c.shading});await s.update();
+  const frame=s.frames.get(s.model.selected),bitmap=new OffscreenCanvas(frame.bitmap.width,frame.bitmap.height),read=bitmap.getContext('2d');read.drawImage(frame.bitmap,0,0);
+  results[c.name]=c.probes.map(p=>[...read.getImageData(p.xy[0]-frame.bitmapRect[0],p.xy[1]-frame.bitmapRect[1],1,1).data]);
+  const section=document.createElement('section'),label=document.createElement('p'),canvas=document.createElement('canvas');label.textContent=c.name;canvas.width=w;canvas.height=h;
+  section.append(label,canvas);document.body.append(section);renderStage(canvas,s.entry,s.model.state.stickers,s.frames,s.sources,null);
+  s.dispose();for(const url of files.values())URL.revokeObjectURL(url);
+}
+window.composites=results;
+</script></body></html>

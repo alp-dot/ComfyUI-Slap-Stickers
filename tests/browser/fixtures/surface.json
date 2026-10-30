@@ -1,0 +1,38 @@
+{
+  "grid": {
+    "filename": "ss_grid_2b95711bee317b21.bin",
+    "subfolder": "slap_stickers",
+    "type": "temp"
+  },
+  "preview": {
+    "filename": "ss_image_2b95711bee317b21.png",
+    "subfolder": "slap_stickers",
+    "type": "temp"
+  },
+  "meta": {
+    "key": "2b95711bee317b21",
+    "grid_w": 320,
+    "grid_h": 240,
+    "image_w": 320,
+    "image_h": 240,
+    "intrinsics": [
+      [
+        1.0,
+        0.0,
+        0.5
+      ],
+      [
+        0.0,
+        1.0,
+        0.5
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "has_mask": false,
+    "format": 1
+  }
+}

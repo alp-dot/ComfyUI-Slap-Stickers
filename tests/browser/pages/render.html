@@ -1,0 +1,18 @@
+<!doctype html><html><body><script type="module">
+import { flatSurface } from "/web_src/surface.js";
+import { renderStage } from "/web_src/stage/renderer.js";
+const fixture=(await(await fetch("/tests/fixtures/geometry/flat.json")).json())[0];
+const grid={...fixture,points:new Float32Array(fixture.points),normals:new Float32Array(fixture.normals),valid:new Uint8Array(fixture.valid)};
+let contexts=0,renderer='unknown';
+const original=HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext=function(type,...args){const context=original.call(this,type,...args);if(type==='webgl2'){contexts++;const info=context.getExtension('WEBGL_debug_renderer_info');renderer=info?context.getParameter(info.UNMASKED_RENDERER_WEBGL):context.getParameter(context.RENDERER);}return context;};
+const make=async color=>{const c=new OffscreenCanvas(64,64),ctx=c.getContext('2d');ctx.fillStyle=color;ctx.fillRect(0,0,64,64);return createImageBitmap(c,{premultiplyAlpha:'none'});};
+const background=await make('rgb(128,128,128)'),source=await make('rgba(255,0,0,0.5019607843)');
+const st={id:'one',anchor:[.5,.5],size:.5,edge:.04,rotation:0,visible:true,opacity:1,shading:0};
+const surface=flatSurface(grid,st,1);
+const entry={grid,image:background,light:new Float32Array(64*64).fill(.5),meta:{image_w:64,image_h:64}};
+const frames=new Map([['one',surface]]),sources=new Map([['one',source]]);
+const canvases=[];
+for(let i=0;i<2;i++){const canvas=document.createElement('canvas');canvas.width=canvas.height=64;document.body.append(canvas);renderStage(canvas,entry,[st],frames,sources,null);canvases.push(canvas);}
+window.__check={contexts,renderer,center:[...canvases[0].getContext('2d').getImageData(32,32,1,1).data],corner:[...canvases[0].getContext('2d').getImageData(1,1,1,1).data]};
+</script></body></html>
