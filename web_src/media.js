@@ -24,11 +24,20 @@ export function acquireSurface(descriptor, urlFor = viewUrl) {
       const [buffer,blob] = await Promise.all([responses[0].arrayBuffer(),responses[1].blob()]);
       const grid = decodeGrid(buffer,descriptor.meta), image = await imageFromBlob(blob);
       try {
+        let sky=null;
+        if(descriptor.sky){const response=await fetch(urlFor(descriptor.sky));if(!response.ok)throw new Error('Sky data is gone — run the workflow again');sky=new Uint8Array(await response.arrayBuffer());if(sky.length!==grid.width*grid.height)throw new Error('Sky data is incomplete — run the workflow again');grid.sky=sky;}
+        const appearance=descriptor.appearance?Object.fromEntries(await Promise.all(Object.entries(descriptor.appearance).map(async([name,file])=>{
+          const {width,height,...location}=file,response=await fetch(urlFor(location));
+          if(!response.ok)throw new Error('Photo analysis is gone — run the workflow again');
+          const data=new Uint16Array(await response.arrayBuffer());
+          if(data.length!==width*height*4)throw new Error('Photo analysis is incomplete — run the workflow again');
+          return [name,{data,width,height}];
+        }))):null;
         // This canvas only extracts bitmap pixels for the worker; all DOM UI belongs to Vue.
         const canvas = new OffscreenCanvas(image.width,image.height), ctx = canvas.getContext("2d");
         ctx.drawImage(image,0,0);
         const pixels = ctx.getImageData(0,0,image.width,image.height).data;
-        const analysis = await workerCall({type:"register",key,buffer,meta:descriptor.meta,pixels,width:image.width,height:image.height},[buffer,pixels.buffer]);
+        const analysis = await workerCall({type:"register",key,buffer,meta:descriptor.meta,pixels,width:image.width,height:image.height,appearance,sky},[buffer,pixels.buffer,...Object.values(appearance??{}).map(v=>v.data.buffer)]);
         return {key,grid,image,...analysis,meta:descriptor.meta};
       } catch (error) { image.close(); throw error; }
     })();

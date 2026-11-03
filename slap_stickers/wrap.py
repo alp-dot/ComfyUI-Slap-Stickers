@@ -1,5 +1,6 @@
 """Local discrete exponential maps, surface wrapping."""
 import heapq
+from collections import OrderedDict
 import math
 import numpy as np
 from .surface import flat_surface
@@ -34,13 +35,39 @@ def surface_topology(grid,edge):
     return links,lengths
 
 
-def wrap_surface(grid, sticker, aspect, physical_width=None, *, topology=None):
+def wrap_surface(grid, sticker, aspect, physical_width=None, *, topology=None,reach_scale=1.25):
     frame = flat_surface(grid, sticker, aspect, physical_width, frame_only=True)
     if frame is None:
         return None
     h,w=grid.height,grid.width
+    pivot=frame.get('pivot',[.5,.5])
+    radius=frame.get('reach') or math.hypot(frame['w']*max(pivot[0],1-pivot[0]),frame['h']*max(pivot[1],1-pivot[1]))*reach_scale
+    scene=getattr(grid,'key',None)
+    key=(scene,frame['cell'],sticker['edge'],radius,*(tuple(frame[k]) for k in ('p0','n','e1','e2'))) if scene else None
+    cached=_charts.get(key) if key is not None else None
+    if cached is None:
+        xy,reached=_solve_chart(grid,sticker,frame,radius,topology)
+        if key is not None:
+            xy.flags.writeable=False;reached.flags.writeable=False
+            _charts[key]=(xy,reached)
+            while len(_charts)>1 and sum(a.nbytes+b.nbytes for a,b in _charts.values())>128*1024**2:_charts.popitem(last=False)
+    else:
+        xy,reached=cached;_charts.move_to_end(key)
+    offset=frame.get('offset',[0,0]);angle=frame.get('turn',0);co,si=math.cos(angle),math.sin(angle)
+    dx,dy=xy[:,0]-offset[0],xy[:,1]-offset[1]
+    u=(dx*co+dy*si)/frame['w']+pivot[0];v=(-dx*si+dy*co)/frame['h']+pivot[1]
+    region=(reached.astype(bool)&(u>=0)&(u<=1)&(v>=0)&(v<=1)).reshape(h,w).astype(np.uint8)
+    yy,xx=np.where(reached.reshape(h,w))
+    bounds=[max(0.,(xx.min()-.5)/w),max(0.,(yy.min()-.5)/h),min(1.,(xx.max()+1.5)/w),min(1.,(yy.max()+1.5)/h)]
+    return {**frame,"xy":xy.reshape(h,w,2),"reached":reached.reshape(h,w),"region":region,"bounds":bounds}
+
+
+_charts=OrderedDict()
+
+def _solve_chart(grid,sticker,frame,radius,topology):
+    h,w=grid.height,grid.width
     p=grid.points.reshape(-1,3).astype(np.float64)
-    a=frame['cell'];radius=.5*math.hypot(frame['w'],frame['h'])*1.25
+    a=frame['cell']
     # Graph distance is never shorter than the straight 3D distance.
     active=(np.linalg.norm(p-p[a],axis=1)<=radius*(1+1e-12)+1e-12)&grid.valid.reshape(-1).astype(bool)
     ids=np.flatnonzero(active)
@@ -101,7 +128,4 @@ def wrap_surface(grid, sticker, aspect, physical_width=None, *, topology=None):
                 continue
             coordinates[q*2]=xsum/total;coordinates[q*2+1]=ysum/total
         seen[q]=1
-    region=(reached.astype(bool)&(np.abs(xy[:,0])<=frame["w"]/2)&(np.abs(xy[:,1])<=frame["h"]/2)).reshape(h,w).astype(np.uint8)
-    yy,xx=np.where(reached.reshape(h,w))
-    bounds=[max(0.,(xx.min()-.5)/w),max(0.,(yy.min()-.5)/h),min(1.,(xx.max()+1.5)/w),min(1.,(yy.max()+1.5)/h)]
-    return {**frame,"xy":xy.reshape(h,w,2),"reached":reached.reshape(h,w),"region":region,"bounds":bounds}
+    return xy,reached

@@ -57,6 +57,17 @@ export COMFY_PYTHON="$COMFY_DIR/venv/bin/python"
 
 これらは以降のコマンド例で使う変数で、アプリケーションの設定項目ではありません。
 
+WindowsのPowerShellでは、ComfyUIが使用するPythonの実行ファイルを指定します。portable版の場合は次のようになります。
+
+```powershell
+$ComfyDir = 'C:\ComfyUI_windows_portable\ComfyUI'
+$ComfyPython = 'C:\ComfyUI_windows_portable\python_embeded\python.exe'
+& $ComfyPython -m pip install pytest
+& $ComfyPython tools/start_moge_workspace.py --comfy-dir $ComfyDir
+```
+
+専用ホストのスクリプトはチェックアウト先へのディレクトリsymlinkを作るため、Windowsでは開発者モードか管理者権限のターミナルが必要です。通常のノードのインストールでは、このスクリプトは使いません。Viteは別のターミナルで、下記と同じ`npm run dev`で起動します。Pythonの検証は`& $ComfyPython -m pytest -q`です。環境変数は`export`の代わりに`$env:SS_COMFY_URL='http://127.0.0.1:8199'`の形で指定します。
+
 ## 開発用UIを起動する
 
 専用のComfyUIを起動します。

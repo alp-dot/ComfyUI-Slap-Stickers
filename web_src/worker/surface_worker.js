@@ -1,11 +1,18 @@
 import { decodeGrid } from "../surface.js";
-import {interactiveSurface,halfGrid,surfaceTopology,depthSpread} from "../wrap.js";
+import {interactiveSurface,surfaceTopology,depthSpread} from "../wrap.js";
 import {rasterizeSurface,releaseTexture,releaseSurfaceTextures,disposeRenderer} from "../stage/renderer.js";
 import {lightingFields} from '../lighting.js';
-const grids = new Map(),sources=new Map();
+import {relocateChart} from '../chart.js';
+import {buildGuides} from '../stage/guides.js';
+import {savedFrame} from '../placement.js';
+import {unhalf} from '../appearance.js';
+import {normalizeValue} from '../state.js';
+const grids = new Map(),sources=new Map(),charts=new Map();let fieldSerial=0;
+function legacyLighting(entry,sticker){if(!sticker.natural&&entry.pixels&&!entry.material)Object.assign(entry,lightingFields(entry.pixels,entry.width,entry.height));}
 function releaseSource(key){
   const bitmap=sources.get(key);if(!bitmap)return;
   releaseTexture(bitmap);bitmap.close();sources.delete(key);
+  charts.delete(key);
 }
 function reference(entry, region) {
   const {grid, light, width, height} = entry, values = [];
@@ -45,41 +52,71 @@ self.onmessage = ({data}) => {
       self.postMessage({id,result:null});return;
     }else if (type === "register") {
       const grid = decodeGrid(data.buffer,data.meta);
-      const {light,material} = lightingFields(data.pixels,data.width,data.height);
-      const coarse=halfGrid(grid);
-      surfaceTopology(grid);surfaceTopology(coarse);
+      if(data.sky)grid.sky=data.sky;
+      const {light,material} = data.appearance?{light:new Float32Array(data.width*data.height).fill(1),material:null}:lightingFields(data.pixels,data.width,data.height);
+      surfaceTopology(grid);
       const spread=depthSpread(grid);
-      grids.set(key,{grid,coarse,light,material,width:data.width,height:data.height,image:{width:data.width,height:data.height},meta:data.meta,spread});
-      const result={light:light.slice(),spread:spread.slice()};
+      let blurMax=0;const detail=data.appearance?.detail?.data;if(detail)for(let i=2;i<detail.length;i+=4)blurMax=Math.max(blurMax,detail[i]);blurMax=unhalf(blurMax);
+      grids.set(key,{grid,light,material,blurMax,pixels:data.appearance?data.pixels:null,appearance:data.appearance,width:data.width,height:data.height,image:{width:data.width,height:data.height},meta:data.meta,spread});
+      const result={light:light.slice(),spread:spread.slice(),appearanceReady:!!data.appearance};
       self.postMessage({id,result},[result.light.buffer,result.spread.buffer]);
     } else if(type==='raster'){
       const entry=grids.get(key),source=sources.get(data.sourceKey);
       if(!entry||!source)throw new Error('Surface data is gone — run the workflow again');
-      const result=rasterizeSurface(entry,data.frame,source,{...data.sticker,opacity:1},data.viewport);
+      legacyLighting(entry,data.sticker);
+      const result=rasterizeSurface(entry,data.frame,source,{...data.sticker,opacity:1},data.viewport??[entry.width,entry.height]);
       self.postMessage({id,result},[result.bitmap]);
     } else if (type === "flat") {
       const entry = grids.get(key);
       if (!entry) throw new Error("Surface data is gone — run the workflow again");
-      const start=performance.now(),grid=data.coarse?entry.coarse:entry.grid;
-      const result = interactiveSurface(grid,data.sticker,data.aspect,data.physicalWidth);
+      if(!data.guideOnly)legacyLighting(entry,data.sticker);
+      const start=performance.now(),grid=entry.grid;
+      const cached=charts.get(data.sourceKey);
+      const pose=savedFrame(grid,data.sticker,data.aspect);
+      const sameBasis=!pose||cached&&pose.baseAnchor&&['p0','n','e1','e2','baseAnchor'].every(name=>pose[name].every((v,i)=>v===cached.frame[name]?.[i]))&&pose.reach===cached.frame.reach&&pose.baseRotation===cached.frame.baseRotation;
+      let result=data.chart&&sameBasis&&data.sticker.mode==='wrap'&&cached?.scene===key&&cached.edge===data.sticker.edge?relocateChart(cached.frame,grid,data.sticker,data.aspect,data.physicalWidth):null;
+      const blur=data.sticker.natural?entry.blurMax:0;
+      const reachScale=size=>Math.max(data.chart?2:1.25,1.25+6*blur/(size*entry.meta.image_w));
+      let generated=!result;
+      if(!result)result=interactiveSurface(grid,data.sticker,data.aspect,data.physicalWidth,reachScale(data.sticker.size));
+      if(result){
+        const depth=result.gripDepth??result.p0[2],apparent=data.physicalWidth==null?data.sticker.size:result.w*grid.intrinsics[0][0]/depth;
+        const size=normalizeValue('size',apparent);
+        if(size!==apparent){result=interactiveSurface(grid,{...data.sticker,size,pose:undefined},data.aspect,size*depth/grid.intrinsics[0][0],reachScale(size));generated=true;}
+        if(result){result.resolvedSize=size;result.blurPad=3*blur*result.p0[2]/(grid.intrinsics[0][0]*entry.meta.image_w);}
+        if(generated&&result?.field){
+          delete result.xy;delete result.reached;
+          result.fieldToken=++fieldSerial;
+          charts.set(data.sourceKey,{scene:key,edge:data.sticker.edge,frame:{...result}});
+        }
+      }
       if(result){
         result.geometryMs=performance.now()-start;
-        result.lref=reference({...entry,grid},result.region);
+        result.lref=data.sticker.natural||data.guideOnly?1:reference({...entry,grid},result.region);
         result.referenceMs=performance.now()-start-result.geometryMs;
         result.anchor=data.sticker.anchor;result.size=data.sticker.size;result.rotation=data.sticker.rotation;
-        result.gridSize=[grid.width,grid.height];result.computeMs=performance.now()-start;
+        result.gridSize=[grid.width,grid.height];
+        result.guide=buildGuides(grid,result);result.screenAspect=entry.meta.image_w/entry.meta.image_h;
+        result.computeMs=performance.now()-start;
         const source=sources.get(data.sourceKey);
         if(source){
           const rasterStart=performance.now();
-          // Keep display pixels sharp; only the expensive surface map uses the coarse grid.
+          // Display and saved placement use the same full-resolution chart.
           // Opacity is applied when displaying the cached bitmap, without another surface solve.
           Object.assign(result,rasterizeSurface(entry,result,source,{...data.sticker,opacity:1},data.viewport??[entry.width,entry.height]));
           result.rasterMs=performance.now()-rasterStart;
         }
         delete result.xy;delete result.reached;
       }
-      const transfers=result?[result.region.buffer,...(result.field?[result.field.buffer]:[]),...(result.bitmap?[result.bitmap]:[])]:[];
-      self.postMessage({id,result},transfers);
-    } else if (type === "release") { const entry=grids.get(key);if(entry)releaseSurfaceTextures(entry);grids.delete(key);if(!grids.size)disposeRenderer();self.postMessage({id,result:null}); }
+      const outgoing=result?{...result}:null;
+      if(data.guideOnly){if(outgoing){delete outgoing.field;delete outgoing.region;}self.postMessage({id,result:outgoing});return;}
+      if(outgoing?.field){
+        if(data.fieldToken===outgoing.fieldToken){delete outgoing.field;outgoing.reuseField=true;}
+        else outgoing.field=outgoing.field.slice();
+      }
+      if(outgoing?.region)outgoing.region=outgoing.region.slice();
+      const transfers=outgoing?[outgoing.region.buffer,...(outgoing.field?[outgoing.field.buffer]:[]),...(outgoing.bitmap?[outgoing.bitmap]:[])]:[];
+      self.postMessage({id,result:outgoing},transfers);
+    } else if (type === "release") { const entry=grids.get(key);if(entry)releaseSurfaceTextures(entry);grids.delete(key);for(const [source,chart]of charts)if(chart.scene===key)charts.delete(source);if(!grids.size)disposeRenderer();self.postMessage({id,result:null}); }
   } catch (error) { self.postMessage({id,error:error.message}); }
 };

@@ -79,6 +79,23 @@ def test_drag_keeps_physical_width():
     assert surface["w"] == .7
 
 
+def test_grabbed_uv_is_the_surface_attachment():
+    case=json.loads((Path(__file__).parents[1]/'fixtures/geometry/grip.json').read_text())
+    grid=plane_grid()
+    surface=flat_surface(grid,case,case['aspect'])
+    np.testing.assert_allclose(surface['corners'],case['corners'],atol=1e-6)
+    np.testing.assert_allclose(flat_uv(surface,[case['anchor']],grid.intrinsics)[0],case['uvAtGrip'],atol=1e-6)
+
+
+def test_saved_accepted_surface_frame_is_not_refitted():
+    pose=json.loads((Path(__file__).parents[1]/'fixtures/geometry/pose.json').read_text())
+    grid=plane_grid();grid.key=pose['scene']
+    frame=flat_surface(grid,sticker(size=.4,pose=pose),1)
+    for key in ('p0','n','e1','e2'):
+        np.testing.assert_array_equal(frame[key],pose[key])
+    assert frame['w']==pose['w'] and frame['h']==pose['h']
+
+
 def test_empty_surface_and_invalid_anchor_are_safe():
     grid = plane_grid()
     grid.valid[:] = 0

@@ -11,6 +11,7 @@ from .geometry_input import read_geometry
 from .grid import build_grid
 from .render import render, SourceUnavailable, source_fingerprints
 from .state import parse_state
+from .scene import repair_scene
 
 _files = None
 
@@ -40,17 +41,19 @@ class SlapStickers(io.ComfyNode):
     def execute(cls, geometry, image=None, mask=None, state_json=""):
         global _files
         state = parse_state(state_json)
-        data = read_geometry(geometry, image, mask)
+        data = repair_scene(read_geometry(geometry, image, mask))
         grid = build_grid(data)
         root = Path(folder_paths.get_temp_directory()).resolve()
         if _files is None or _files.root != root:
             _files = EditorFiles(root)
         ui = _files.prepare(geometry, image, mask, prepared=(data, grid))
+        grid.key=ui[UI_KEY][0]['meta']['geometry_key']
         ui[UI_KEY][0]['source_revisions']=[{'source':st['source'],'digest':digest} for st,digest in zip(state['stickers'],source_fingerprints(state,folder_paths.get_input_directory()))]
         try:
             result = render(data, grid, state, folder_paths.get_input_directory(),
                             comfy.model_management.get_torch_device(),
-                            comfy.model_management.throw_exception_if_processing_interrupted)
+                            comfy.model_management.throw_exception_if_processing_interrupted,
+                            appearance=_files.appearance(ui[UI_KEY][0]) if state['version']==2 else None)
         except SourceUnavailable as error:
             return io.NodeOutput(None,None,None,ui=ui,block_execution=str(error))
         return io.NodeOutput(*result, ui=ui)

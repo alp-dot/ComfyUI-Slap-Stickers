@@ -16,6 +16,8 @@ class GeometryInput:
     normal: np.ndarray | None
     image: torch.Tensor
     mask: np.ndarray | None
+    sky: np.ndarray | None = None
+    measured_valid: np.ndarray | None = None
 
 
 def _check_shape(value, dimensions, tail=None):

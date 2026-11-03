@@ -8,7 +8,7 @@
 
 Slap Stickers is a ComfyUI custom node that puts logos, labels and illustrations onto the objects in a photograph.
 It reads the shape of each object with MoGe, so stickers follow round things like bottles and fruit.
-The result keeps the photo's original resolution, ready to use as it is or to refine with an image-editing model.
+The result keeps the photo's original resolution. Automatic blending uses ordinary image processing, with no image-generation model.
 
 Inspired by [Lovart](https://www.lovart.ai/).
 
@@ -16,7 +16,8 @@ Inspired by [Lovart](https://www.lovart.ai/).
 
 - **Follows the shape.** Stickers bend around curved objects and stop at their edges.
 - **Edit right in the node.** Drop an image, then drag, resize and rotate it on the photo.
-- **Blends into the photo.** The light and color of the photo carry over onto each sticker.
+- **Blends into the photo.** Lighting, texture, blur, grain and color adapt together through one **Blend** slider.
+- **Select hidden stickers.** Use the thumbnails to select stickers hidden behind an object.
 
 ## Installation
 

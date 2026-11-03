@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-slap-stickers"
-version = "0.1.0"
+version = "0.2.0"
 description = "Place image stickers on the surfaces in a photograph using MoGe geometry."
 license = "MIT"
 requires-python = ">=3.10"

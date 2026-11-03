@@ -10,9 +10,9 @@ Click the photo to give the node focus. Keyboard shortcuts work while the node h
 
 | Action | How |
 |---|---|
-| Add a sticker | Drop an image file onto the photo, or click **+** |
-| Select | Click a sticker. Click an empty spot to deselect |
-| Move | Drag the sticker |
+| Add a sticker | Drop an image file or image URL onto the photo, or click **+** |
+| Select | Click a sticker or thumbnail. Shift-click toggles multiple selection; click an empty spot to deselect |
+| Move | Drag the sticker; the point you grab follows the surface under the cursor |
 | Resize | Drag a corner. The aspect ratio and the center stay fixed |
 | Rotate | Drag the round handle. Hold <kbd>Shift</kbd> to snap to 15° steps |
 | Duplicate | Toolbar button or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>D</kbd> |
@@ -21,9 +21,14 @@ Click the photo to give the node focus. Keyboard shortcuts work while the node h
 | Delete | Toolbar button, <kbd>Delete</kbd> or <kbd>Backspace</kbd> |
 | Cancel a drag | <kbd>Esc</kbd>. When nothing is being dragged, <kbd>Esc</kbd> deselects |
 | Undo / Redo | ComfyUI's Undo/Redo. Each finished edit is one step |
-| Zoom | The mouse wheel zooms the ComfyUI canvas. The node has no zoom of its own |
+| Blend | The slider below the photo controls all five appearance effects together (0–1, initially 1) |
+| Inline graph gestures | The wheel and empty-space drag control the ComfyUI graph |
 
-A sticker's center can only sit on a usable surface. Over the sky, outside the allowed area or outside the photo, the cursor changes to "not allowed" and the sticker stays at the last valid point.
+The point you grab chooses the surface. To keep a sticker behind a foreground object, grab an exposed part over the background. To move it onto the foreground, move the grabbed point onto that object. Moving between surfaces keeps its apparent size. Sky is also supported; outside the photo or allowed area, the sticker stays at its last valid position.
+
+Use thumbnails to select hidden stickers. Multiple selection supports deletion; move, resize and rotate one sticker at a time. The rotate handle moves below the sticker when the top is cut off.
+
+**Blend** adjusts lighting, texture, blur, grain and color together: 0 leaves the sticker's appearance unchanged, and 1 applies the estimated effects. It does not change opacity or clipping.
 
 ## Inputs and outputs
 
@@ -43,12 +48,15 @@ A sticker's center can only sit on a usable surface. Over the sky, outside the a
 
 - All outputs have the size of the background. `stickers` and `mask` together form an RGBA layer of the stickers.
 - For a large photo, you can run MoGe on a smaller copy and connect the original to `Background override`.
-- The editor stores sticker image references and placement settings in the hidden `state_json` input.
+- Placement is saved in the workflow. Existing workflows remain supported; moving a sticker or using Blend enables the new blending behavior.
+- `image` is composited in linear light. Mixing `stickers` and `mask` in sRGB can produce a different result.
 
 ## Sticker files
 
 Added images are uploaded to `ComfyUI/input/slap_stickers/`. The workflow stores references to these files, not the images.
 When you share a workflow, share the sticker files with it. Existing workflows can still use files in their original input subfolder.
+
+PNG, JPEG, WebP, GIF and BMP are supported; animated files use the first frame. Other browser-readable formats are converted to PNG on upload. If an image URL cannot be downloaded, save the image and drop the file instead.
 
 If a sticker file is missing, the background and the other stickers stay editable, but the node blocks its outputs.
 Put the file back and run again, or remove the missing stickers with **Remove unavailable images**.
@@ -65,17 +73,12 @@ All checkpoints go in `ComfyUI/models/geometry_estimation/` and can be downloade
 
 See the [official MoGe guide](https://github.com/Comfy-Org/docs/blob/main/tutorials/utility/moge.mdx) for all checkpoints and their options.
 
-## Tested environment
-
-ComfyUI 0.41.0 (frontend 1.55.17), MoGe-3 ViT-g, an NVIDIA GPU on Linux, in both the Nodes 2.0 and the classic renderer.
-
-## Limitations
+## Requirements and limitations
 
 - One still photo from a regular camera. Panoramas, video, image batches and depth-only input are not supported.
-- Stickers are images. There are no text stickers, and one sticker is selected at a time.
-- The node does not simulate lighting such as reflections or cast shadows. Refine the result with an image-editing model if needed.
-- Not implemented yet: zoom and pan inside the node, moving with the arrow keys, fit shortcuts, pasting from the clipboard, and a dedicated help page.
-- Speed on macOS and full rendering in Safari have not been verified.
+- Use a browser with WebGL2 and floating-point color buffers. Maximum image size depends on the browser and GPU.
+- Automatic blending estimates appearance from one photo; it cannot create new reflections or cast shadows. Fine edges and strong blur may remain imperfect.
+- Verified on Linux with an NVIDIA GPU, ComfyUI 0.41.0 (frontend 1.55.17), MoGe-3 ViT-g, in both classic and Nodes 2.0. Windows and macOS/Safari have not been validated on hardware.
 
 ## Troubleshooting
 
@@ -85,15 +88,7 @@ ComfyUI 0.41.0 (frontend 1.55.17), MoGe-3 ViT-g, an NVIDIA GPU on Linux, in both
 | The model is not listed in `Load MoGe Model` | Place it in `ComfyUI/models/geometry_estimation/` and restart ComfyUI. |
 | "This geometry has no point map from a regular camera" | Connect `Run MoGe Inference`. Panorama geometry is not supported. |
 | "Slap Stickers takes one image (got N)" | Pass a single image, not a batch. |
-| "No usable surface in this image" | MoGe found no valid surface. Try another photo. |
+| "No usable surface in this image" | MoGe found no valid surface. Check the allowed-area mask; unmeasured sky itself is supported. |
 | Later nodes do not run, and missing images are reported | Restore the files in `ComfyUI/input/slap_stickers/`, or use **Remove unavailable images**. |
 | A **Retry surface** button appears instead of the editor | Click it to attach the editor again. |
 | The UI looks outdated after an update | Restart ComfyUI and hard-reload the browser tab. |
-
-## How it works
-
-1. MoGe estimates a 3D point for every pixel. The node reduces it to an analysis grid and finds where the depth jumps.
-2. While you edit, a shared Web Worker projects each sticker onto the surface and draws it with WebGL2, off the main thread.
-   Stickers wrap along the surface from their center, based on Schmidt et al., "Interactive Decal Compositing with Discrete Exponential Maps" (SIGGRAPH 2006).
-3. When the workflow runs, Python renders the same projection at full resolution on ComfyUI's device, usually the GPU.
-   Python and JavaScript read the same JSON fixtures in tests, so the preview and the output follow the same rules.

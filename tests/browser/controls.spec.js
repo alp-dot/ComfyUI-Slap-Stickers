@@ -51,7 +51,7 @@ test('Add opens one picker without leaking clicks to the graph or changing the e
   expect(await surface.boundingBox()).toEqual(before);
 });
 
-test('icon names appear on hover and keyboard focus, and Add has a separate island immediately left of Duplicate',async({page})=>{
+test('icon names appear on hover and keyboard focus, and Add has its own island in the left controls',async({page})=>{
   await page.goto('/tests/browser/pages/fixture/');
   await expect(page.getByTestId('surface-status')).toHaveAttribute('data-sticker-count','0');
   const add=page.getByRole('button',{name:'Add image',exact:true});
@@ -66,7 +66,7 @@ test('icon names appear on hover and keyboard focus, and Add has a separate isla
   const plus=await add.boundingBox(),duplicate=await page.getByRole('button',{name:'Duplicate',exact:true}).boundingBox(),stage=await page.getByTestId('surface-stage').boundingBox();
   expect(Math.abs(plus.y+plus.height/2-duplicate.y-duplicate.height/2)).toBeLessThan(1);
   expect(duplicate.x-plus.x-plus.width).toBeGreaterThan(4);
-  expect(duplicate.x-plus.x-plus.width).toBeLessThan(30);
+  const left=await page.locator('.ss-global-controls').boundingBox();expect(plus.x).toBeGreaterThanOrEqual(left.x);expect(plus.x+plus.width).toBeLessThanOrEqual(left.x+left.width);
   expect(plus.y).toBeGreaterThan(stage.y+stage.height/2);
   expect(await add.evaluate(b=>!!b.closest('[aria-label="Selected sticker"]'))).toBe(false);
   const shapes=[];
@@ -136,8 +136,8 @@ test('Duplicate offsets the copy visibly, preserves its settings, and stays on a
     return {copy,selected:s.model.selected,commits:window.demo.commits.length,offset:copy.anchor.map((v,i)=>(v-original.anchor[i])*[meta.image_w,meta.image_h][i]*scale)};
   });
   result.offset.forEach(v=>expect(v).toBeCloseTo(20,1));
-  const {id,name,anchor,...settings}=result.copy;
-  const {id:originalId,name:originalName,anchor:originalAnchor,...originalSettings}=before.st;
+  const {id,name,anchor,pose,...settings}=result.copy;
+  const {id:originalId,name:originalName,anchor:originalAnchor,pose:originalPose,...originalSettings}=before.st;
   expect(id).not.toBe(originalId);expect(result.selected).toBe(id);expect(settings).toEqual(originalSettings);
   expect(result.commits).toBe(before.commits+1);
   await expect.poll(()=>page.evaluate(()=>window.demo.session.frames.size)).toBe(2);
