@@ -36,14 +36,16 @@ export function surfaceTopology(grid,edge=.04){
   const data={links,planar,...workspace};
   entries.set(edge,data);return data;
 }
-export function wrapSurface(grid,sticker,aspect,physicalWidth=null){
+export function wrapSurface(grid,sticker,aspect,physicalWidth=null,reachScale=1.25){
   const started=performance.now();
   const frame=flatSurface(grid,sticker,aspect,physicalWidth,true);if(!frame)return null;
   const {width:w,height:h,points:p}=grid,count=w*h,{links,normals,offsets,dist,basis,heap,positions}=surfaceTopology(grid,sticker.edge);
   const xy=new Float64Array(count*2),reached=new Uint8Array(count),region=new Uint8Array(count);
   const frameAt=performance.now();
   dist.fill(Infinity);positions.fill(-1);
-  const a=frame.cell,radius=.5*Math.hypot(frame.w,frame.h)*1.25;
+  const a=frame.cell,pivot=frame.pivot??[.5,.5],radius=frame.reach??Math.hypot(frame.w*Math.max(pivot[0],1-pivot[0]),frame.h*Math.max(pivot[1],1-pivot[1]))*reachScale;
+  frame.reach=radius;
+  const off=frame.offset??[0,0],co=Math.cos(frame.turn??0),si=Math.sin(frame.turn??0);
   const {n,e1,e2,p0}=frame;
   xy[a*2]=e1[0]*(p[a*3]-p0[0])+e1[1]*(p[a*3+1]-p0[1])+e1[2]*(p[a*3+2]-p0[2]);
   xy[a*2+1]=e2[0]*(p[a*3]-p0[0])+e2[1]*(p[a*3+1]-p0[1])+e2[2]*(p[a*3+2]-p0[2]);
@@ -88,7 +90,8 @@ export function wrapSurface(grid,sticker,aspect,physicalWidth=null){
       if(!weightSum)continue;xy[q*2]=sx/weightSum;xy[q*2+1]=sy/weightSum;
     }
     reached[q]=1;
-    if(Math.abs(xy[q*2])<=frame.w/2&&Math.abs(xy[q*2+1])<=frame.h/2)region[q]=1;
+    const sx=xy[q*2]-off[0],sy=xy[q*2+1]-off[1],u=(sx*co+sy*si)/frame.w+pivot[0],v=(-sx*si+sy*co)/frame.h+pivot[1];
+    if(u>=0&&u<=1&&v>=0&&v<=1)region[q]=1;
     const x=q%w,y=Math.floor(q/w);xmin=Math.min(xmin,x);xmax=Math.max(xmax,x);ymin=Math.min(ymin,y);ymax=Math.max(ymax,y);
     for(let k=0;k<8;k++)if(bits&(1<<k)){
       const j=q+offsets[k];if(reached[j])continue;
@@ -127,15 +130,16 @@ export function depthSpread(grid){
   return spread;
 }
 
-export function interactiveSurface(grid,sticker,aspect,physicalWidth=null){
+export function interactiveSurface(grid,sticker,aspect,physicalWidth=null,reachScale=1.25){
   if(sticker.mode!=="wrap")return flatSurface(grid,sticker,aspect,physicalWidth);
-  if(!surfaceTopology(grid,sticker.edge).planar)return wrapSurface(grid,sticker,aspect,physicalWidth);
+  if(!surfaceTopology(grid,sticker.edge).planar)return wrapSurface(grid,sticker,aspect,physicalWidth,reachScale);
   // On one connected plane the exponential map is exactly the plane projection.
   // The Wrap shading region is the intrinsic rectangle, not the Flat bounding box.
   const frame=flatSurface(grid,sticker,aspect,physicalWidth);if(!frame)return null;
   for(let i=0;i<frame.region.length;i++)if(frame.region[i]){
     const k=i*3,dx=grid.points[k]-frame.p0[0],dy=grid.points[k+1]-frame.p0[1],dz=grid.points[k+2]-frame.p0[2];
-    if(Math.abs(dx*frame.e1[0]+dy*frame.e1[1]+dz*frame.e1[2])>frame.w/2||Math.abs(dx*frame.e2[0]+dy*frame.e2[1]+dz*frame.e2[2])>frame.h/2)frame.region[i]=0;
+    const x=(dx*frame.e1[0]+dy*frame.e1[1]+dz*frame.e1[2])/frame.w+frame.pivot[0],y=(dx*frame.e2[0]+dy*frame.e2[1]+dz*frame.e2[2])/frame.h+frame.pivot[1];
+    if(x<0||x>1||y<0||y>1)frame.region[i]=0;
   }
   frame.planeShortcut=true;return frame;
 }

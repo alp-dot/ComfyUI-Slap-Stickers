@@ -57,6 +57,17 @@ export COMFY_PYTHON="$COMFY_DIR/venv/bin/python"
 
 These variables are used in the examples below; they are not application settings.
 
+For Windows PowerShell, use the Python executable from your ComfyUI installation. For example, with the portable distribution:
+
+```powershell
+$ComfyDir = 'C:\ComfyUI_windows_portable\ComfyUI'
+$ComfyPython = 'C:\ComfyUI_windows_portable\python_embeded\python.exe'
+& $ComfyPython -m pip install pytest
+& $ComfyPython tools/start_moge_workspace.py --comfy-dir $ComfyDir
+```
+
+The dedicated-host helper creates a directory symlink for this checkout; Windows needs Developer Mode or an elevated terminal for that step. Normal node installation does not use this helper. Start Vite in another terminal with the same `npm run dev` command below. For Python checks use `& $ComfyPython -m pytest -q`. PowerShell environment variables use `$env:SS_COMFY_URL='http://127.0.0.1:8199'`, rather than `export`.
+
 ## Run the development UI
 
 Start the dedicated ComfyUI host:

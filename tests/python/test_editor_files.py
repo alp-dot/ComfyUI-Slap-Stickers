@@ -67,3 +67,12 @@ def test_temp_subfolder_cannot_escape_via_symlink(tmp_path):
     with pytest.raises(ValueError, match="temp"):
         EditorFiles(temp).prepare(geometry())
     assert not list(outside.iterdir())
+
+
+def test_background_color_changes_do_not_change_the_accepted_geometry_identity(tmp_path):
+    packet=geometry(16,24);files=EditorFiles(tmp_path)
+    before=files.prepare(packet)['slap_stickers'][0]['meta']
+    after=files.prepare(packet,image=torch.full_like(packet['image'],.8))['slap_stickers'][0]['meta']
+    assert before['key']!=after['key']
+    assert before['geometry_key']==after['geometry_key']
+    assert len(before['geometry_key'])==16

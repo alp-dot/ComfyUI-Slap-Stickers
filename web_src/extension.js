@@ -9,7 +9,7 @@ import "./slap_stickers.css";
 
 const records=new WeakMap(),live=new Set();
 let generation=0;
-const surfaceLayout={minWidth:260,minHeight:320};
+const surfaceLayout={minWidth:600,minHeight:320};
 const stylesheet=document.createElement("link");
 stylesheet.rel="stylesheet";
 stylesheet.href=new URL(String("./slap_stickers.css"),import.meta.url).href;

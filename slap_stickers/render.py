@@ -11,7 +11,8 @@ import torch.nn.functional as F
 
 from .surface import flat_surface, PLANE_TOL
 from .wrap import wrap_surface, surface_topology
-from .lighting import lighting_fields, shade
+from .lighting import lighting_fields, shade,linear,srgb
+from .appearance import analyze,source_statistics,match_color,sample_source,grain
 
 
 class SourceUnavailable(ValueError):
@@ -87,7 +88,7 @@ def _resize_source(source,density):
     return source.resize(target,Image.Resampling.BOX)
 
 
-def render(data, grid, state, input_directory, device, interrupt=lambda: None):
+def render(data, grid, state, input_directory, device, interrupt=lambda: None,*,appearance=None):
     base = data.image.detach().to(device=device, dtype=torch.float32)
     h, w = base.shape[1:3]
     out, union, accumulated = base.clone(), base.new_zeros((1,h,w)), torch.zeros_like(base)
@@ -99,7 +100,13 @@ def render(data, grid, state, input_directory, device, interrupt=lambda: None):
     gh, gw = data.depth.shape
     inverse = torch.as_tensor(np.linalg.inv(data.intrinsics), device=device, dtype=torch.float32)
     source_spread = F.max_pool2d(torch.where(valid.bool(),depth,-torch.inf),3,1,1) + F.max_pool2d(torch.where(valid.bool(),-depth,-torch.inf),3,1,1)
-    luminance, material = lighting_fields(base) if any(st["shading"] for st,_ in sources) else (None, None)
+    natural=state['version']==2
+    if natural:
+        appearance=appearance if appearance is not None else analyze(data)
+        fields={name:torch.as_tensor(value.astype(np.float32),device=device).permute(2,0,1)[None] for name,value in appearance.items()}
+        blur_max=float(appearance['detail'][...,2].max())
+        out=linear(out)
+    luminance, material = lighting_fields(base) if not natural and any(st["shading"] for st,_ in sources) else (None, None)
     topologies={}
     for st, source in sources:
         interrupt()
@@ -108,13 +115,15 @@ def render(data, grid, state, input_directory, device, interrupt=lambda: None):
         wrapped = st["mode"] == "wrap"
         if wrapped:
             if st['edge'] not in topologies:topologies[st['edge']]=surface_topology(grid,st['edge'])
-            surface=wrap_surface(grid,st,source.width/source.height,topology=topologies[st['edge']])
+            reach_scale=max(2,1.25+6*blur_max/(st['size']*w)) if natural else 1.25
+            surface=wrap_surface(grid,st,source.width/source.height,topology=topologies[st['edge']],reach_scale=reach_scale)
         else:
             surface=flat_surface(grid,st,source.width/source.height)
         if surface is None:
             continue
-        x0, y0 = max(0,math.floor(surface["bounds"][0]*w)-2), max(0,math.floor(surface["bounds"][1]*h)-2)
-        x1, y1 = min(w,math.ceil(surface["bounds"][2]*w)+2), min(h,math.ceil(surface["bounds"][3]*h)+2)
+        padding=2+(math.ceil(3*blur_max*state.get('blend',1)) if natural else 0)
+        x0, y0 = max(0,math.floor(surface["bounds"][0]*w)-padding), max(0,math.floor(surface["bounds"][1]*h)-padding)
+        x1, y1 = min(w,math.ceil(surface["bounds"][2]*w)+padding), min(h,math.ceil(surface["bounds"][3]*h)+padding)
         if x1 <= x0 or y1 <= y0:
             continue
         yy, xx = torch.meshgrid((torch.arange(y0,y1,device=device)+.5)/h, (torch.arange(x0,x1,device=device)+.5)/w, indexing="ij")
@@ -132,14 +141,18 @@ def render(data, grid, state, input_directory, device, interrupt=lambda: None):
                 return sampled[...,:3]/total[...,None],sampled[...,3]>1e-12
             def uv_at(uv):
                 sample,good=field_at(uv)
-                return sample[...,:2]/base.new_tensor([surface["w"],surface["h"]])+.5,good
+                xy=sample[...,:2]-base.new_tensor(surface.get('offset',[0,0]))
+                co,si=math.cos(surface.get('turn',0)),math.sin(surface.get('turn',0))
+                rotated=torch.stack((xy[...,0]*co+xy[...,1]*si,-xy[...,0]*si+xy[...,1]*co),-1)
+                return rotated/base.new_tensor([surface["w"],surface["h"]])+base.new_tensor(surface.get('pivot',[.5,.5])),good
         else:
             def uv_at(uv):
                 rays = torch.cat((uv,torch.ones_like(uv[...,:1])), -1) @ inverse.T
                 denominator = rays @ n
                 distance = (n@p0)/torch.where(denominator.abs() > 1e-12, denominator, torch.full_like(denominator,float("nan")))
                 offset = rays*distance[...,None]-p0
-                result = torch.stack((offset@e1/surface["w"]+.5,offset@e2/surface["h"]+.5),-1)
+                pivot=surface.get('pivot',[.5,.5])
+                result = torch.stack((offset@e1/surface["w"]+pivot[0],offset@e2/surface["h"]+pivot[1]),-1)
                 return result, distance > 0
         uv, _ = uv_at(coords[0])
         coverage = torch.zeros_like(xx)
@@ -148,6 +161,7 @@ def render(data, grid, state, input_directory, device, interrupt=lambda: None):
             subuv, front = uv_at(coords[0]+base.new_tensor([dx/w,dy/h]))
             if wrapped:uv_samples.append(subuv)
             coverage += ((subuv >= 0).all(-1)&(subuv <= 1).all(-1)&front).float()*.25
+        if natural:coverage.fill_(1) # The premultiplied source sampler owns outline AA and defocus.
         # Four source pixels must all be valid, including samples with zero bilinear weight.
         sx,sy = xx*gw-.5,yy*gh-.5
         ix,iy = sx.floor().long(),sy.floor().long()
@@ -169,32 +183,67 @@ def render(data, grid, state, input_directory, device, interrupt=lambda: None):
             reference_depth,reached_here=field_at(coords[0])
             allowed = reached_here & (torch.abs(pp[...,2]-reference_depth[...,2])<=st["edge"]*pp[...,2])
         else:
-            allowed &= torch.abs((pp-p0)@n) <= PLANE_TOL*pp[...,2]
+            plane_allowed=torch.abs((pp-p0)@n) <= PLANE_TOL*pp[...,2]
+            allowed=plane_allowed if natural else allowed&plane_allowed
         allowed &= validity & ~on_edge
         if data.mask is not None:
             allowed &= torch.as_tensor(data.mask[y0:y1,x0:x1],device=device) >= .5
-        coverage *= allowed
+        soft=None
+        if natural and 'clip' in fields:
+            matte=F.grid_sample(fields['clip'],sample,align_corners=False,padding_mode='border')[0].permute(1,2,0)
+            soft=matte[...,3]>.5;depths=matte[...,:2].exp2()
+            if wrapped:expected_depth=reference_depth[...,2]
+            else:
+                rays=torch.cat((coords[0],torch.ones_like(xx)[...,None]),-1)@inverse.T
+                expected_depth=(n@p0)/(rays@n)
+            match=(expected_depth[...,None]-depths).abs()<=st['edge']*depths
+            refined=match[...,0]*matte[...,2]+match[...,1]*(1-matte[...,2])
+            refined*=validity
+            if wrapped:refined*=reached_here
+            if data.mask is not None:refined*=torch.as_tensor(data.mask[y0:y1,x0:x1],device=device)>=.5
+            coverage*=torch.where(soft,refined,allowed.float())
+        else:coverage*=allowed
+        if natural:
+            normals=torch.as_tensor(grid.normals,device=device).permute(2,0,1)[None]
+            normal=F.grid_sample(normals,sample,mode='nearest',align_corners=False,padding_mode='border')[0].permute(1,2,0)
+            facing=(normal*n).sum(-1)
+            facing=torch.where(torch.linalg.vector_norm(normal,dim=-1)>1e-6,facing,torch.ones_like(facing))
+            if soft is not None:facing=torch.where(soft,torch.ones_like(facing),facing)
+            fade=((facing-.087155743)/(.422618262-.087155743)).clamp(0,1)
+            coverage*=fade*fade*(3-2*fade)
         # Pre-filter small stickers before bilinear texture lookup.
-        if wrapped:
+        if wrapped and not natural:
             density=_wrap_density(uv_samples,coverage)
             if density is not None:source=_resize_source(source,density)
-        else:
+        elif not natural:
             source = _prefilter(source,surface,data.intrinsics,w,h)
         rgba = torch.as_tensor(np.asarray(source).copy(),device=device,dtype=torch.float32).permute(2,0,1)[None]/255
+        if natural:
+            rgba[:,:3]=linear(rgba[:,:3]);stats=source_statistics(rgba[0].permute(1,2,0))
         rgba[:,:3] *= rgba[:,3:4]
-        sampled = F.grid_sample(rgba,(uv*2-1)[None],align_corners=False,padding_mode="border")[0].permute(1,2,0)
+        if natural:
+            rgba=rgba.half().float()
+            sampled_fields={name:F.grid_sample(value,sample,align_corners=False,padding_mode='border')[0].permute(1,2,0) for name,value in fields.items()}
+            dx=(uv_at(coords[0]+base.new_tensor([.5/w,0]))[0]-uv_at(coords[0]-base.new_tensor([.5/w,0]))[0])
+            dy=(uv_at(coords[0]+base.new_tensor([0,.5/h]))[0]-uv_at(coords[0]-base.new_tensor([0,.5/h]))[0])
+            sampled=sample_source(rgba,uv,dx,dy,sampled_fields['detail'][...,2]*state.get('blend',1))
+        else:sampled = F.grid_sample(rgba,(uv*2-1)[None],align_corners=False,padding_mode="border")[0].permute(1,2,0)
         color = torch.where(sampled[...,3:4]>1e-6,sampled[...,:3]/sampled[...,3:4].clamp(min=1e-6),0)
-        if luminance is not None and st["shading"]:
+        strength=state.get('blend',1) if natural else st['shading']
+        if natural:
+            color=match_color(color,sampled_fields['detail'],sampled_fields['color'],sampled_fields['finish'],stats,strength)
+            color=(color+grain((xx*w).floor(),(yy*h).floor())[...,None]*sampled_fields['detail'][...,3:4]*strength).clamp(0,1)
+        if luminance is not None and strength:
             cells = np.argwhere(surface["region"] > 0)
             if len(cells):
                 cells_uv = torch.as_tensor(np.stack(((cells[:,1]+.5)/grid.width,(cells[:,0]+.5)/grid.height),-1),device=device,dtype=torch.float32)[None,None]
                 values = F.grid_sample(luminance,cells_uv*2-1,align_corners=False,padding_mode="border").flatten().sort().values
                 ref = ((values[(len(values)-1)//2]+values[len(values)//2])*.5).clamp(min=1e-4)
-                color = shade(color, luminance[0,0,y0:y1,x0:x1], material[0,:,y0:y1,x0:x1].permute(1,2,0), ref, st["shading"])
+                color = shade(color, luminance[0,0,y0:y1,x0:x1], material[0,:,y0:y1,x0:x1].permute(1,2,0), ref, strength)
         alpha = sampled[...,3]*coverage*st["opacity"]
         aa = alpha[...,None]
         out[0,y0:y1,x0:x1] = out[0,y0:y1,x0:x1]*(1-aa)+color*aa
         accumulated[0,y0:y1,x0:x1] = accumulated[0,y0:y1,x0:x1]*(1-aa)+color*aa
         union[0,y0:y1,x0:x1] = 1-(1-union[0,y0:y1,x0:x1])*(1-alpha)
     colors = torch.where(union[...,None] > 1e-6,accumulated/union[...,None].clamp(min=1e-6),0)
-    return out,colors,union
+    return (srgb(out).clamp(0,1),srgb(colors).clamp(0,1),union) if natural else (out,colors,union)

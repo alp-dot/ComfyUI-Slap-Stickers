@@ -78,3 +78,10 @@ def test_optional_image_keeps_full_resolution_rgb_and_checks_aspect():
 def test_decoder_rejects_truncated_files():
     with pytest.raises(ValueError, match="surface data"):
         decode_grid(b"", 2, 2, np.eye(3))
+
+
+def test_unusable_supplied_normals_are_rebuilt_from_the_point_map():
+    packet=geometry(8,8);packet['normal']=torch.zeros_like(packet['points']);packet['normal'][:,2,2]=float('nan')
+    grid=build_grid(read_geometry(packet))
+    np.testing.assert_allclose(grid.normals[2,2],[0,0,-1],atol=1e-6)
+    np.testing.assert_allclose(grid.normals[4,4],[0,0,-1],atol=1e-6)

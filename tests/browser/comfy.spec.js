@@ -68,8 +68,16 @@ test.describe('ComfyUI host integration',()=>{
     await expect(page.locator('.ss-surface input[type=number]')).toHaveCount(0);
     const canvas=page.getByTestId('surface-stage');
     await expect(canvas).toHaveAttribute('data-selection-ready','true');
+    const graphScale=await page.evaluate(()=>window.ssApp.canvas.ds.scale);
+    for(const scale of [graphScale*.5,graphScale*1.5,graphScale]){
+      await page.evaluate(scale=>{const c=window.ssApp.canvas;c.ds.scale=scale;c.setDirty(true,true);},scale);
+      await expect.poll(()=>canvas.evaluate(c=>Math.abs(c.width/c.getBoundingClientRect().width-window.devicePixelRatio))).toBeLessThan(.01);
+    }
+    await canvas.screenshot(); // Wait for the host's position to settle after zoom.
     const rect=await canvas.boundingBox(),x=rect.x+rect.width*.5,y=rect.y+rect.height*.5;
-    await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+30,y+15,{steps:4});await page.mouse.up();
+    await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+30,y+15,{steps:4});
+    await expect(canvas).not.toHaveAttribute('data-rendered-anchor','0.5,0.5');
+    await page.mouse.up();
     await expect.poll(()=>page.evaluate(()=>JSON.parse(window.ssApp.rootGraph.getNodeById(4).widgets.find(w=>w.name==='state_json').value).stickers[0].anchor[0])).toBeGreaterThan(.5);
     await page.locator('.ss-surface').focus();await page.keyboard.press('Control+z');
     await expect.poll(()=>page.evaluate(()=>JSON.parse(window.ssApp.rootGraph.getNodeById(4).widgets.find(w=>w.name==='state_json').value).stickers[0].anchor[0])).toBe(.5);
@@ -98,6 +106,8 @@ test.describe('ComfyUI host integration',()=>{
     await expect.poll(savedOpacity).toBe(.5);
     await selectSticker(page);
     await expect(page.getByRole('toolbar',{name:'Selected sticker'})).toBeVisible();
+    await expect(page.getByRole('button',{name:'Edit larger',exact:true})).toHaveCount(0);
+    await expect(page.locator('dialog')).toHaveCount(0);
     await page.screenshot({path:`test-results/comfy-${modern?'modern':'classic'}.png`});
     await page.evaluate(()=>{
       const type=window.LiteGraph.registered_node_types.SurfaceStickers,original=type.prototype.addDOMWidget;
@@ -125,12 +135,13 @@ test.describe('ComfyUI host integration',()=>{
     });
     await expect(page.getByTestId('surface-status')).toHaveAttribute('data-sticker-count','0');
     const surface=page.locator('.ss-surface'),before=await surface.boundingBox();
+    const nodeSize=await page.evaluate(()=>Array.from(window.app.rootGraph.getNodeById(4).size));
     const [picker]=await Promise.all([page.waitForEvent('filechooser'),page.getByRole('button',{name:'Add image',exact:true}).click()]);
     expect(await surface.boundingBox()).toEqual(before);
     await picker.setFiles([]);
     expect(await surface.boundingBox()).toEqual(before);
     await expect(page.getByTestId('surface-status')).toHaveAttribute('data-sticker-count','0');
-    expect(await page.evaluate(()=>Array.from(window.app.rootGraph.getNodeById(4).size))).toEqual([640,600]);
+    expect(await page.evaluate(()=>Array.from(window.app.rootGraph.getNodeById(4).size))).toEqual(nodeSize);
   });
   for(const modern of [false,true])test(`properties panel cannot resize the surface after idle (${modern?'Nodes 2.0':'classic'})`,async({page})=>{
     test.setTimeout(65000);
@@ -175,7 +186,7 @@ test.describe('ComfyUI host integration',()=>{
     await page.route('**/settings',async route=>{
       if(route.request().method()!=='GET')return route.continue();
       const response=await route.fetch();
-      await route.fulfill({response,json:{...await response.json(),'Comfy.TutorialCompleted':true,'Comfy.VueNodes.Enabled':modern,'Comfy.RightSidePanel.IsOpen':false}});
+      await route.fulfill({response,json:{...await response.json(),'Comfy.TutorialCompleted':true,'Comfy.VueNodes.Enabled':modern,'Comfy.RightSidePanel.IsOpen':false,'Comfy.Minimap.Visible':false}});
     });
     await page.goto(url,{waitUntil:'domcontentloaded'});
     await page.waitForFunction(()=>window.app?.isGraphReady&&window.LiteGraph?.registered_node_types?.SurfaceStickers);
@@ -214,7 +225,7 @@ test.describe('ComfyUI host integration',()=>{
     await page.screenshot({path:`test-results/small-node-${modern?'modern':'classic'}.png`});
     // Grow, then resize with the host's real handle: the computed minimum must not ratchet up.
     const minimum=await page.evaluate(()=>Array.from(window.app.rootGraph.getNodeById('4').computeSize()));
-    await page.evaluate(()=>window.app.rootGraph.getNodeById('4').setSize([640,650]));
+    await page.evaluate(()=>{const n=window.app.rootGraph.getNodeById('4');n.setSize([900,600]);window.app.canvas.centerOnNode(n);window.app.canvas.setDirty(true,true);});
     await expect.poll(fits).toBe(true);
     const rasterFits=()=>page.evaluate(()=>{
       const c=document.querySelector('.ss-canvas'),meta=window.app.nodeOutputs['4'].slap_stickers[0].meta;
@@ -222,10 +233,15 @@ test.describe('ComfyUI host integration',()=>{
       return JSON.stringify(window.ssRasterBoxes.at(-1))===JSON.stringify([Math.round(meta.image_w*scale),Math.round(meta.image_h*scale)]);
     });
     await expect.poll(rasterFits).toBe(true);
+    // Camera/layout changes settle independently of the Worker bitmap. Wait for
+    // the DOM position before aiming at a host resize handle.
+    await surface.screenshot();
     let corner;
     if(modern){
       const handle=page.locator('[data-node-id="4"] [data-corner="SE"]');await expect(handle).toHaveCount(1);
+      await handle.hover();
       const r=await handle.boundingBox();corner=[r.x+r.width/2,r.y+r.height/2];
+      expect(await page.evaluate(([x,y])=>document.elementFromPoint(x,y)?.closest('[data-corner]')?.dataset.corner,corner)).toBe('SE');
     }else corner=await page.evaluate(()=>{
       const n=window.app.rootGraph.getNodeById('4'),c=window.app.canvas,r=c.canvas.getBoundingClientRect();
       return [r.x+(n.pos[0]+c.ds.offset[0]+n.renderingSize[0])*c.ds.scale-2,r.y+(n.pos[1]+c.ds.offset[1]+n.renderingSize[1])*c.ds.scale-2];
@@ -234,7 +250,7 @@ test.describe('ComfyUI host integration',()=>{
     await expect.poll(fits).toBe(true);
     await expect.poll(rasterFits).toBe(true);
     const after=await page.evaluate(()=>{const n=window.app.rootGraph.getNodeById('4');return {size:Array.from(n.size),minimum:Array.from(n.computeSize())};});
-    expect(after.size[0]).toBeLessThan(640);expect(after.minimum).toEqual(minimum);
+    expect(after.size[0]).toBeLessThan(900);expect(after.minimum).toEqual(minimum);
     await page.screenshot({path:`test-results/resized-node-${modern?'modern':'classic'}.png`});
     await expect(surface).toBeVisible();
   });

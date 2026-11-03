@@ -42,7 +42,9 @@ test("drop, drag, cancellation and committed state", async ({ page }) => {
   await page.mouse.move(x,y); await page.mouse.down(); await page.mouse.move(x+35,y+20,{steps:4});
   await page.keyboard.press("Escape"); await page.mouse.up();
   expect(await page.evaluate(() => window.demo.session.model.state)).toEqual(before);
-  await page.mouse.move(x,y); await page.mouse.down(); await page.mouse.move(x+35,y+20,{steps:4}); await page.mouse.up();
+  await page.mouse.move(x,y); await page.mouse.down(); await page.mouse.move(x+35,y+20,{steps:4});
+  await expect.poll(()=>page.evaluate(()=>window.demo.session.model.state.stickers[0].anchor[0])).toBeGreaterThan(.5);
+  await page.mouse.up();
   await expect.poll(() => page.evaluate(() => window.demo.commits.length)).toBe(2);
   const after = await page.evaluate(() => window.demo.session.model.state.stickers[0]);
   expect(after.anchor[0]).toBeGreaterThan(.5);
@@ -59,6 +61,17 @@ test("missing surface stays actionable and corrupt state is retained", async ({ 
   await expect(page.getByTestId("surface-status")).toContainText("The sticker data is damaged.");
   await expect(page.getByRole("button",{name:"Add image",exact:true})).toBeDisabled();
   expect(await page.evaluate(()=>window.demo.commits)).toEqual([]);
+});
+
+test('source installation must finish before a frame is accepted',async({page})=>{
+  await page.addInitScript(()=>{const Native=Worker;window.Worker=class extends Native{postMessage(data,...rest){if(data.type==='source'&&window.holdSource){window.holdSource=false;window.sourceHeld=true;window.resumeSource=()=>super.postMessage(data,...rest);return;}super.postMessage(data,...rest);}};});
+  await page.goto('/tests/browser/pages/fixture/');await expect(page.getByRole('button',{name:'Add image',exact:true})).toBeEnabled();
+  await page.evaluate(()=>{window.holdSource=true;window.demo.session.setState(JSON.stringify({version:2,stickers:[{id:'pending',source:{filename:'sticker.png',subfolder:'slap_stickers',type:'input'}}]}));});
+  await page.waitForFunction(()=>window.sourceHeld);
+  const premature=await page.evaluate(async()=>{const s=window.demo.session;await s.update();return s.frames.has('pending');});
+  await page.evaluate(()=>window.resumeSource());
+  await expect.poll(()=>page.evaluate(()=>!!window.demo.session.frames.get('pending')?.bitmap)).toBe(true);
+  expect(premature).toBe(false);
 });
 
 for(const waitAt of ['upload','install'])test(`an upload survives same-surface synchronization during ${waitAt}`,async({page})=>{
@@ -207,7 +220,7 @@ test('resizing the node refreshes sticker pixels without editing or saving state
   await expect.poll(box).toEqual([300,225]);
   const before=await page.evaluate(()=>({state:JSON.stringify(window.demo.session.model.state),commits:window.demo.commits.length}));
   const shapes=await page.evaluate(()=>window.surfaceCalls.filter(type=>type==='flat').length);
-  for(const [width,height,expected]of [[1002,850,[1000,750]],[342,450,[340,255]],[762,620,[760,570]]]){
+  for(const [width,height,expected]of [[1002,850,[1000,750]],[342,450,[340,255]],[762,620,[747,560]]]){
     await page.locator('#app').evaluate((e,[w,h])=>{e.style.width=w+'px';e.style.height=h+'px';},[width,height]);
     await expect.poll(box).toEqual(expected);
     expect(await page.evaluate(()=>window.surfaceCalls.filter(type=>type==='flat').length)).toBe(shapes);
@@ -257,20 +270,22 @@ test('resize and rotate directly, cancel, and manage layer order',async({page})=
   await expect(page.getByTestId('surface-status')).toHaveAttribute('data-sticker-count','0');
   await page.locator('input[type=file]').setInputFiles('tests/browser/fixtures/sticker.png');
   const target=page.getByTestId('surface-stage');await expect(target).toHaveAttribute('data-selection-ready','true');
-  const controls=()=>page.evaluate(()=>{
+  const controls=()=>page.evaluate(async()=>{
     const c=document.querySelector('canvas'),s=window.demo.session,f=s.frames.get(s.model.selected),r=c.getBoundingClientRect();
-    const scale=Math.min(c.width/s.entry.meta.image_w,c.height/s.entry.meta.image_h),w=Math.round(s.entry.meta.image_w*scale),h=Math.round(s.entry.meta.image_h*scale);
-    const corners=f.corners.map(([u,v])=>[r.x+((c.width-w)/2+u*w)*r.width/c.width,r.y+((c.height-h)/2+v*h)*r.height/c.height]);
-    const top=corners[0].map((v,i)=>(v+corners[1][i])/2),bottom=corners[2].map((v,i)=>(v+corners[3][i])/2),d=top.map((v,i)=>v-bottom[i]),length=Math.hypot(...d);
-    return {corner:corners[2],rotate:top.map((v,i)=>v+d[i]/length*26),center:top.map((v,i)=>(v+bottom[i])/2)};
+    const {selectionControls}=await import('/web_src/stage/selection.js'),{displayFrame}=await import('/web_src/stage/live.js'),{fitRect}=await import('/web_src/stage/renderer.js');
+    const frame=displayFrame(f,s.model.state.stickers[0],s.entry.grid.intrinsics),box=fitRect(c,s.entry.meta),q=selectionControls(box,frame,c.width/r.width);
+    const screen=p=>p.map((v,i)=>[r.x,r.y][i]+v*r.width/c.width);
+    return {corner:screen(q.corners[2]),rotate:screen(q.rotate),center:screen([box.left+frame.center[0]*box.width,box.top+frame.center[1]*box.height])};
   });
   let p=await controls();
-  await page.mouse.move(...p.corner);await page.mouse.down();await page.mouse.move(p.corner[0]+30,p.corner[1]+20,{steps:4});await page.mouse.up();
+  await page.mouse.move(...p.corner);await page.mouse.down();await page.mouse.move(p.corner[0]+30,p.corner[1]+20,{steps:4});
   await expect.poll(()=>page.evaluate(()=>window.demo.session.model.state.stickers[0].size)).toBeGreaterThan(.25);
+  await page.mouse.up();
   await expect.poll(()=>page.evaluate(()=>window.demo.commits.length)).toBe(2);
   p=await controls();
-  await page.mouse.move(...p.rotate);await page.mouse.down();await page.mouse.move(p.center[0]+100,p.center[1],{steps:5});await page.mouse.up();
+  await page.mouse.move(...p.rotate);await page.mouse.down();await page.mouse.move(p.center[0]+100,p.center[1],{steps:5});
   await expect.poll(()=>page.evaluate(()=>Math.abs(window.demo.session.model.state.stickers[0].rotation))).toBeGreaterThan(20);
+  await page.mouse.up();
   await expect.poll(()=>page.evaluate(()=>window.demo.commits.length)).toBe(3);
   const before=await page.evaluate(()=>window.demo.session.model.state);
   p=await controls();await page.mouse.move(...p.corner);await page.mouse.down();await page.mouse.move(p.corner[0]+20,p.corner[1]+20);await page.keyboard.press('Escape');await page.mouse.up();
@@ -294,11 +309,12 @@ test('a near-plane crossing draws and hits the visible rotate handle',async({pag
   const point=await page.evaluate(async()=>{
     const s=window.demo.session,id=s.model.selected,f=s.frames.get(id);
     Object.assign(f,{p0:[0,0,1],n:[0,-Math.SQRT1_2,Math.SQRT1_2],e1:[1,0,0],e2:[0,Math.SQRT1_2,Math.SQRT1_2],w:1,h:1,size:1,rotation:0,anchor:[.5,.5]});
+    delete f.guide; // This synthetic plane replaces the previously solved curved guide too.
     s.entry.grid.intrinsics=[[1,0,.5],[0,1,.5],[0,0,1]];
     s.setSticker(id,{size:4,rotation:0,anchor:[.5,.5]});
     await new Promise(requestAnimationFrame);
     const {fitRect,renderStage}=await import('/web_src/stage/renderer.js'),c=document.querySelector('canvas'),box=fitRect(c,s.entry.meta),r=c.getBoundingClientRect();
-    const x=box.left+box.width/2,y=box.top+box.height/2-Math.hypot(box.width,box.height)/4;
+    const x=box.left+box.width/2,y=box.top+box.height-10*c.width/r.width;
     const plain=document.createElement('canvas');plain.width=c.width;plain.height=c.height;
     renderStage(plain,s.entry,s.model.state.stickers,s.frames,s.sources,null);
     const actual=c.getContext('2d').getImageData(Math.round(x)-8,Math.round(y)-8,16,16).data;

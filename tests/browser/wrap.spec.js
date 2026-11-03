@@ -9,7 +9,9 @@ test('guides disappear during a pointer gesture and return on release or cancel'
     const plain=document.createElement('canvas');plain.width=c.width;plain.height=c.height;
     renderStage(plain,s.entry,s.model.state.stickers,s.frames,s.sources,null);
     const actual=c.getContext('2d').getImageData(0,0,c.width,c.height).data,expected=plain.getContext('2d').getImageData(0,0,c.width,c.height).data;
-    return actual.reduce((sum,v,i)=>sum+(v!==expected[i]),0);
+    // Accelerated and readback canvases differ by one 8-bit unit at a few pixels.
+    // Guides have much larger contrast; count only differences above that rounding.
+    return actual.reduce((sum,v,i)=>sum+(Math.abs(v-expected[i])>1),0);
   });
   expect(await difference()).toBeGreaterThan(0);
   await page.screenshot({path:'test-results/selection-guide.png'});
@@ -68,7 +70,7 @@ test('shader wraps a checkerboard around a cylinder instead of clipping to the t
   await page.screenshot({path:'test-results/cylinder-wrap.png'});
 });
 
-for(const scene of ['plane','cylinder'])test('interactive maps stay responsive with '+scene+' and reuse unchanged layers',async({page})=>{
+for(const scene of ['plane','cylinder','cylinder&natural'])test('interactive maps stay responsive with '+scene+' and reuse unchanged layers',async({page})=>{
   test.setTimeout(60000);
   await page.goto('/tests/browser/pages/performance.html?'+scene);await page.waitForFunction(()=>window.perf);
   const result=await page.evaluate(async()=>{

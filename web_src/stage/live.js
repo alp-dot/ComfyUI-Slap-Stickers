@@ -8,7 +8,15 @@ export function displayFrame(frame,sticker,intrinsics){
   const t=liveTransform(frame,sticker),c=t.cos,s=t.sin;
   const p0=[...frame.p0],e1=frame.e1.map((v,i)=>v*c+frame.e2[i]*s),e2=frame.e2.map((v,i)=>-frame.e1[i]*s+v*c);
   const width=frame.w*t.scale,height=frame.h*t.scale;
-  return {...frame,...projectRectangle(p0,e1,e2,width,height,intrinsics,t.offset)};
+  const projected=projectRectangle(p0,e1,e2,width,height,intrinsics,t.offset,frame.pivot);
+  if(!frame.guide)return {...frame,...projected};
+  const aspect=frame.screenAspect??1,anchor=frame.anchor??sticker.anchor;
+  const transform=p=>{
+    if(!p)return null;const x=p[0]-anchor[0],y=(p[1]-anchor[1])/aspect;
+    return [anchor[0]+t.offset[0]+t.scale*(x*c-y*s),anchor[1]+t.offset[1]+t.scale*(x*s+y*c)*aspect];
+  };
+  return {...frame,...projected,handles:frame.guide.handles.map(transform),corners:frame.guide.handles.filter(Boolean).map(transform),
+    center:transform(frame.guide.center)??projected.center,top:transform(frame.guide.top),bottom:transform(frame.guide.bottom)};
 }
 export function stickerUV(frame,sticker,uv,intrinsics){
   const t=liveTransform(frame,sticker),v=uv.map((x,i)=>x-t.offset[i]);let x,y;
@@ -25,5 +33,8 @@ export function stickerUV(frame,sticker,uv,intrinsics){
     const q=ray.map((r,i)=>r*distance-frame.p0[i]);x=dot(q,frame.e1);y=dot(q,frame.e2);
     const [gw,gh]=frame.gridSize??[0,0];if(gw&&gh&&!frame.region[Math.min(gh-1,Math.max(0,Math.floor(v[1]*gh)))*gw+Math.min(gw-1,Math.max(0,Math.floor(v[0]*gw)))])return null;
   }
-  return [(x*t.cos+y*t.sin)/(frame.w*t.scale)+.5,(-x*t.sin+y*t.cos)/(frame.h*t.scale)+.5];
+  const offset=frame.offset??[0,0],angle=frame.turn??0,c=Math.cos(angle),s=Math.sin(angle),dx=x-offset[0],dy=y-offset[1];
+  x=dx*c+dy*s;y=-dx*s+dy*c;
+  const pivot=frame.pivot??[.5,.5];
+  return [(x*t.cos+y*t.sin)/(frame.w*t.scale)+pivot[0],(-x*t.sin+y*t.cos)/(frame.h*t.scale)+pivot[1]];
 }

@@ -61,6 +61,9 @@ def build_grid(data, long_side=GRID_LONG_SIDE):
         valid &= nearest(data.mask, gh, gw) >= .5
     points[~valid] = 0
     normal = nearest(data.normal, gh, gw).astype(np.float64) if data.normal is not None else _normals(points, valid)
+    if data.normal is not None:
+        usable=np.isfinite(normal).all(axis=-1)&(np.linalg.norm(normal,axis=-1)>1e-12)
+        if not usable.all():normal[~usable]=_normals(points,valid)[~usable]
     lengths = np.linalg.norm(normal, axis=-1)
     good = valid & np.isfinite(normal).all(axis=-1) & (lengths > 1e-12)
     normal = np.divide(normal, lengths[..., None], out=np.zeros_like(normal), where=good[..., None])

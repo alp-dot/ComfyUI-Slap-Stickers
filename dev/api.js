@@ -1,4 +1,4 @@
-// Local ComfyUI only, through Vite's same-origin proxy (one SSH forward).
+// Local ComfyUI through Vite's same-origin development proxy.
 import {surfaceDescriptor} from '../web_src/media.js';
 export const viewUrl=file=>`/comfy/view?${new URLSearchParams(file)}`;
 async function json(path,options){

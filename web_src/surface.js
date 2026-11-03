@@ -1,4 +1,5 @@
 // Deterministic float64 geometry. Mirrors surface.py, guarded by parity fixtures.
+import {savedFrame} from './placement.js';
 export const PLANE_TOL = .03;
 const JACOBI_SWEEPS = 24, JACOBI_EPSILON = 1e-14, PARALLEL_COS = .05;
 export const dot = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
@@ -8,8 +9,9 @@ const mul = (a, t) => a.map(v => v*t);
 const unit = a => Math.sqrt(dot(a, a)) > 1e-12 ? mul(a, 1/Math.sqrt(dot(a, a))) : [0, 0, 0];
 const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
 const matvec = (a, b) => a.map(row => dot(row, b));
-export function projectRectangle(p0,e1,e2,width,height,intrinsics,offset=[0,0]){
-  const rectangle=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([x,y])=>add(p0,add(mul(e1,x*width/2),mul(e2,y*height/2))));
+export function projectRectangle(p0,e1,e2,width,height,intrinsics,offset=[0,0],pivot=[.5,.5]){
+  const at=(x,y)=>add(p0,add(mul(e1,(x-pivot[0])*width),mul(e2,(y-pivot[1])*height)));
+  const rectangle=[[0,0],[1,0],[1,1],[0,1]].map(([x,y])=>at(x,y));
   const near=.05*p0[2],polygon=[];
   const project=q=>{const p=matvec(intrinsics,q);return [p[0]/p[2]+offset[0],p[1]/p[2]+offset[1]];};
   rectangle.forEach((q,i)=>{
@@ -17,7 +19,7 @@ export function projectRectangle(p0,e1,e2,width,height,intrinsics,offset=[0,0]){
     if(q[2]>=near)polygon.push(q);
     if((q[2]>=near)!==(r[2]>=near))polygon.push(add(q,mul(sub(r,q),(near-q[2])/(r[2]-q[2]))));
   });
-  const top3d=add(p0,mul(e2,-height/2)),center=project(p0),p=matvec(intrinsics,p0),up=matvec(intrinsics,mul(e2,-1));
+  const center3d=at(.5,.5),top3d=at(.5,0),center=project(center3d),p=matvec(intrinsics,center3d),up=matvec(intrinsics,mul(e2,-1));
   return {corners:polygon.map(project),handles:rectangle.map(q=>q[2]>=near?project(q):null),center,top:top3d[2]>=near?project(top3d):null,up:[up[0]*p[2]-p[0]*up[2],up[1]*p[2]-p[1]*up[2]]};
 }
 export function inverse3(a) {
@@ -55,7 +57,7 @@ export function flatSurface(grid, sticker, aspect, physicalWidth = null, frameOn
   const { width: w, height: h, points: p, normals, valid } = grid;
   const point = i => [p[i*3], p[i*3+1], p[i*3+2]];
   const normal = i => [normals[i*3], normals[i*3+1], normals[i*3+2]];
-  const [u,v] = sticker.anchor;
+  const saved=savedFrame(grid,sticker,aspect),[u,v] = saved?.baseAnchor??sticker.anchor;
   let ay = Math.min(h-1, Math.floor(v*h)), ax = Math.min(w-1, Math.floor(u*w)), a = ay*w+ax;
   if (!valid[a]) {
     let best = Infinity, nearest = -1;
@@ -82,7 +84,8 @@ export function flatSurface(grid, sticker, aspect, physicalWidth = null, frameOn
   }
   const cells = [...seen].sort((a,b) => a-b);
   let mean, n;
-  if (cells.length >= 6) {
+  if(saved){mean=saved.p0;n=saved.n;}
+  else if (cells.length >= 6) {
     mean = [0,0,0];
     for (const i of cells) mean = add(mean, point(i));
     mean = mul(mean, 1/cells.length);
@@ -99,7 +102,7 @@ export function flatSurface(grid, sticker, aspect, physicalWidth = null, frameOn
   if (dot(n, point(a)) > 0) n = mul(n, -1);
   const inv = inverse3(grid.intrinsics), ray = matvec(inv, [u,v,1]);
   const denominator = dot(n,ray), grazing = Math.abs(denominator)/Math.sqrt(dot(ray,ray)) < PARALLEL_COS;
-  let p0 = grazing ? point(a) : mul(ray, dot(n,mean)/denominator);
+  let p0 = saved?saved.p0:grazing ? point(a) : mul(ray, dot(n,mean)/denominator);
   if (p0[2] <= 0) p0 = point(a);
   const ray1 = matvec(inv, [u,v-1/h,1]), d1 = dot(n,ray1);
   const p1 = Math.abs(d1) > 1e-12 ? mul(ray1, dot(n,mean)/d1) : [0,0,0];
@@ -110,11 +113,12 @@ export function flatSurface(grid, sticker, aspect, physicalWidth = null, frameOn
     up = unit(up);
   }
   const down = mul(up,-1), right = cross(n,down), theta = sticker.rotation*Math.PI/180, c = Math.cos(theta), s = Math.sin(theta);
-  const e1 = add(mul(right,c),mul(down,s)), e2 = add(mul(right,-s),mul(down,c));
-  const width = physicalWidth ?? sticker.size*p0[2]/grid.intrinsics[0][0], height = width/aspect;
-  const {corners}=projectRectangle(p0,e1,e2,width,height,grid.intrinsics);
+  const e1 = saved?saved.e1:add(mul(right,c),mul(down,s)), e2 = saved?saved.e2:add(mul(right,-s),mul(down,c));
+  const width = physicalWidth ?? saved?.w ?? sticker.size*p0[2]/grid.intrinsics[0][0], height = saved&&physicalWidth===null?saved.h:width/aspect;
+  const pivot=sticker.pivot??[.5,.5],projection=projectRectangle(p0,e1,e2,width,height,grid.intrinsics,[0,0],pivot),{corners}=projection;
   const bounds = [Math.max(0,Math.min(...corners.map(p=>p[0]))), Math.max(0,Math.min(...corners.map(p=>p[1]))), Math.min(1,Math.max(...corners.map(p=>p[0]))), Math.min(1,Math.max(...corners.map(p=>p[1])))];
-  if(frameOnly)return {p0,n,e1,e2,w:width,h:height,bounds,corners,cell:a};
+  const mapping={offset:saved?.shift??[0,0],turn:saved?.turn??0,baseAnchor:saved?.baseAnchor??sticker.anchor,baseRotation:saved?.baseRotation??sticker.rotation,reach:saved?.reach};
+  if(frameOnly)return {p0,n,e1,e2,w:width,h:height,bounds,...projection,pivot,cell:a,...mapping};
   const [bx0,by0,bx1,by1] = [Math.floor(bounds[0]*w)-2,Math.floor(bounds[1]*h)-2,Math.ceil(bounds[2]*w)+2,Math.ceil(bounds[3]*h)+2];
   const region = new Uint8Array(w*h), visited = new Uint8Array(w*h);
   queue = [a]; visited[a] = 1;
@@ -129,7 +133,7 @@ export function flatSurface(grid, sticker, aspect, physicalWidth = null, frameOn
       visited[j] = 1; queue.push(j);
     }
   }
-  return { p0,n,e1,e2,w:width,h:height,region,bounds,corners,cell:a };
+  return { p0,n,e1,e2,w:width,h:height,region,bounds,...projection,pivot,cell:a,...mapping };
 }
 export function decodeGrid(buffer, meta) {
   const width = meta.grid_w, height = meta.grid_h, count = width*height;
@@ -137,5 +141,5 @@ export function decodeGrid(buffer, meta) {
   const view = new DataView(buffer);
   const points = new Float32Array(count*3), normals = new Float32Array(count*3);
   for (let i = 0; i < count*3; i++) { points[i] = view.getFloat32(i*4,true); normals[i] = view.getFloat32(count*12+i*4,true); }
-  return { width, height, points, normals, valid: new Uint8Array(buffer.slice(count*24)), intrinsics: meta.intrinsics };
+  return { width, height, points, normals, valid: new Uint8Array(buffer.slice(count*24)), intrinsics: meta.intrinsics,key:meta.geometry_key??meta.key??'' };
 }
